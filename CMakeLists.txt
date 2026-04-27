@@ -20,9 +20,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(nanoflann)
-find_package(PDAL 2.3.0 REQUIRED)
+find_package(PDAL REQUIRED)
 find_package(cxxopts 3.0.0 REQUIRED)
 find_package(fmt REQUIRED)
 

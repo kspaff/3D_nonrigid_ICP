@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
       pc_mov_chunk.UpdateXt();
 
       // Update points
-      X(row_indices, Eigen::all) = pc_mov_chunk.Xt();
+      X(row_indices, -1) = pc_mov_chunk.Xt();
     }
     if (params.profiling) profiler.Stop("A.02 Transformation of point cloud");
 

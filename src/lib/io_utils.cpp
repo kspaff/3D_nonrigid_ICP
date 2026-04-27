@@ -1,88 +1,73 @@
 #include "io_utils.hpp"
 
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <stdexcept>
+#include <iomanip>
+
 NamedColumnMatrix<Eigen::MatrixXd> ImportFileToMatrix(const std::string& path,
-                                                      const bool& with_normals,
-                                                      const bool& with_correspondence_id) {
-  // Extract extension
-  std::string extension = std::filesystem::path(path).extension().string();
+                                                      bool with_normals,
+                                                      bool with_correspondence_id) 
+													  {
+  int expected_cols = 3;
+  if (with_normals) expected_cols += 3;
+  if (with_correspondence_id) expected_cols += 1;
 
-  // Check if pdal supports the file format
-  pdal::StageFactory factory;
-
-  // Create pdal reader type based on suffix
-  std::string pdal_reader_type;
-  if (extension == ".las" || extension == ".laz") {
-    pdal_reader_type = "readers.las";
-  } else if (extension == ".ply") {
-    pdal_reader_type = "readers.ply";
-  } else if (extension == ".xyz" || extension == ".txt") {
-    pdal_reader_type = "readers.text";
-  } else {
-    std::string error_string;
-    error_string += "File format '" + extension + "' is not supported.\n";
-    throw std::runtime_error(error_string);
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    throw std::runtime_error("Cannot open file: " + path);
   }
 
-  // Check if a reader type is available
-  pdal::Stage* reader = factory.createStage(pdal_reader_type);
+  std::vector<std::vector<double>> data;
+  std::string line;
+  bool first_line = true;
 
-  // Initialize PDAL reader
-  pdal::PointTable table;
-  pdal::Options options;
-  options.add("filename", path);
-  reader->setOptions(options);
-  reader->prepare(table);
+  while (std::getline(file, line)) {
+    // Trim carriage returns and spaces
+    line.erase(line.find_last_not_of(" \r\n\t") + 1);
+    if (line.empty()) continue;
 
-  // Execute the reader to read the point cloud
-  pdal::PointViewSet view_set = reader->execute(table);
+    std::stringstream ss(line);
+    std::string cell;
+    std::vector<double> row;
+    bool is_header = false;
 
-  // Take first view from view set (contains the point cloud data)
-  pdal::PointViewPtr view = *view_set.begin();
+    while (std::getline(ss, cell, ',')) {
+      // Trim whitespaces around cell
+      cell.erase(0, cell.find_first_not_of(" \t"));
+      cell.erase(cell.find_last_not_of(" \t") + 1);
+      if (cell.empty()) continue;
 
-  if (view->empty()) throw std::runtime_error("Point cloud is empty!");
+      try {
+        row.push_back(std::stod(cell));
+      } catch (const std::invalid_argument&) {
+        if (first_line) {
+          is_header = true;
+          break; // It's likely a header string, stop parsing this row
+        } else {
+          throw std::runtime_error("Invalid numeric data in CSV at row " + 
+                                   std::to_string(data.size() + 2));
+        }
+      }
+    }
 
-  // Return 6D eigen matrix
-  return ExtractMatrix(view, with_normals, with_correspondence_id);
-}
+    if (is_header) {
+      first_line = false;
+      continue;
+    }
 
-NamedColumnMatrix<Eigen::MatrixXd> ExtractMatrix(const pdal::PointViewPtr view,
-                                                 const bool& with_normals,
-                                                 const bool& with_correspondence_id) {
-  if (!view->hasDim(pdal::Dimension::Id::X) || !view->hasDim(pdal::Dimension::Id::Y) ||
-      !view->hasDim(pdal::Dimension::Id::Z)) {
-    std::string error_string;
-    error_string += "Point cloud does not have all fields required!\n";
-    error_string += "Fields required: X, Y, Z\n";
-    error_string += PointcloudFieldsToString(view);
-    throw std::runtime_error(error_string);
+    if (row.size() < static_cast<size_t>(expected_cols)) {
+      throw std::runtime_error("Row in CSV does not have enough columns. Expected " + 
+                               std::to_string(expected_cols) + ", got " + std::to_string(row.size()));
+    }
+
+    data.push_back(row);
+    first_line = false;
   }
 
-  if (with_normals &&
-      (!view->hasDim(pdal::Dimension::Id::NormalX) || !view->hasDim(pdal::Dimension::Id::NormalY) ||
-       !view->hasDim(pdal::Dimension::Id::NormalZ))) {
-    std::string error_string;
-    error_string += "Point cloud does not have all fields required!\n";
-    error_string += "Fields required: NormalX, NormalY, NormalZ\n";
-    error_string += PointcloudFieldsToString(view);
-    throw std::runtime_error(error_string);
-  }
-
-  // Create id for custom field "correspondence_id"
-  auto correspondence_id_dimension = view->table().layout()->findDim("CorrespondenceID");
-  if (with_correspondence_id && (correspondence_id_dimension == pdal::Dimension::Id::Unknown)) {
-    std::string error_string;
-    error_string += "Point cloud does not have all fields required!\n";
-    error_string += "Fields required: CorrespondenceID\n";
-    error_string += PointcloudFieldsToString(view);
-    throw std::runtime_error(error_string);
-  }
-
-  int matrix_cols = with_normals ? 6 : 3;
-  matrix_cols += with_correspondence_id ? 1 : 0;
-  std::vector<std::string> col_names;
-  col_names.emplace_back("x");
-  col_names.emplace_back("y");
-  col_names.emplace_back("z");
+  // Define named columns
+  std::vector<std::string> col_names = {"x", "y", "z"};
   if (with_normals) {
     col_names.emplace_back("nx");
     col_names.emplace_back("ny");
@@ -91,179 +76,91 @@ NamedColumnMatrix<Eigen::MatrixXd> ExtractMatrix(const pdal::PointViewPtr view,
   if (with_correspondence_id) {
     col_names.emplace_back("correspondence_id");
   }
-  NamedColumnMatrix<Eigen::MatrixXd> x(Eigen::MatrixXd(view->size(), matrix_cols), col_names);
 
-  // Get named column indices once
-  Eigen::Index x_col, y_col, z_col, nx_col = -1, ny_col = -1, nz_col = -1, correspondence_id_col = -1;
-  x_col = x.namedColIndex("x");
-  y_col = x.namedColIndex("y");
-  z_col = x.namedColIndex("z");
-  if (with_normals) {
-    nx_col = x.namedColIndex("nx");
-    ny_col = x.namedColIndex("ny");
-    nz_col = x.namedColIndex("nz");
-  }
-  if (with_correspondence_id) {
-    correspondence_id_col = x.namedColIndex("correspondence_id");
-  }
-
-  for (pdal::PointId idx = 0; idx < view->size(); idx++) {
-    x(idx, x_col) = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
-    x(idx, y_col) = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
-    x(idx, z_col) = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
-    if (with_normals) {
-      x(idx, nx_col) = view->getFieldAs<double>(pdal::Dimension::Id::NormalX, idx);
-      x(idx, ny_col) = view->getFieldAs<double>(pdal::Dimension::Id::NormalY, idx);
-      x(idx, nz_col) = view->getFieldAs<double>(pdal::Dimension::Id::NormalZ, idx);
-    }
-    if (with_correspondence_id) {
-      x(idx, correspondence_id_col) = view->getFieldAs<int>(correspondence_id_dimension, idx);
+  // Populate Eigen matrix
+  Eigen::MatrixXd mat(data.size(), col_names.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    for (size_t j = 0; j < col_names.size(); ++j) {
+      mat(i, j) = data[i][j];
     }
   }
 
-  return x;
-}
-
-void UpdateTransformedPointcloud(const pdal::PointViewPtr view,
-                                 const NamedColumnMatrix<Eigen::MatrixXd>& x_updated) {
-  if (!view->hasDim(pdal::Dimension::Id::X) || !view->hasDim(pdal::Dimension::Id::Y) ||
-      !view->hasDim(pdal::Dimension::Id::Z)) {
-    std::string error_string;
-    error_string += "Point cloud does not have all required fields!\n";
-    error_string += "Fields required: X, Y, Z\n";
-    error_string += PointcloudFieldsToString(view);
-    throw std::runtime_error(error_string);
-  }
-
-  // Get named column indices once
-  Eigen::Index x_col, y_col, z_col;
-  x_col = x_updated.namedColIndex("x");
-  y_col = x_updated.namedColIndex("y");
-  z_col = x_updated.namedColIndex("z");
-  for (pdal::PointId idx = 0; idx < view->size(); idx++) {
-    view->setField(pdal::Dimension::Id::X, idx, x_updated(idx, x_col));
-    view->setField(pdal::Dimension::Id::Y, idx, x_updated(idx, y_col));
-    view->setField(pdal::Dimension::Id::Z, idx, x_updated(idx, z_col));
-  }
-}
-
-std::string PointcloudFieldsToString(const pdal::PointViewPtr view) {
-  std::stringstream string_stream;
-  string_stream << "Fields in pointcloud: ";
-  for (auto const& dim : view->dims()) {
-    string_stream << view->dimName(dim);
-    if (dim != view->dims().back()) {
-      string_stream << ", ";
-    }
-  }
-  string_stream << std::endl;
-  return string_stream.str();
+  return NamedColumnMatrix<Eigen::MatrixXd>(mat, col_names);
 }
 
 void SaveMatrixToFile(const NamedColumnMatrix<Eigen::MatrixXd>& x_updated,
-                      const std::string& path_in, const std::string& path_out) {
-  // Extract extension
-  std::string extension_in = std::filesystem::path(path_in).extension().string();
-  std::string extension_out = std::filesystem::path(path_out).extension().string();
-
-  // Create pdal reader/writer type based on suffix
-  std::string pdal_reader_type = CreatePDALReaderType(extension_in);
-  std::string pdal_writer_type = CreatePDALWriterType(extension_out);
-
-  // Check if input and output file formats are the same
-  if (extension_in != extension_out) {
-    std::string error_string;
-    error_string += "Input and output file formats are not the same!\n";
-    error_string += "Input file format: " + extension_in + "\n";
-    error_string += "Output file format: " + extension_out + "\n";
-    throw std::runtime_error(error_string);
+                      const std::string& path_in, 
+                      const std::string& path_out) {
+  std::ifstream fin(path_in);
+  if (!fin.is_open()) {
+    throw std::runtime_error("Cannot open input file: " + path_in);
   }
 
-  // Create stage factory
-  pdal::StageFactory factory;
-
-  // Check if a reader type is available
-  pdal::Stage* reader = factory.createStage(pdal_reader_type);
-
-  // Initialize PDAL reader
-  pdal::PointTable table;
-  pdal::Options options;
-  options.add("filename", path_in);
-  reader->setOptions(options);
-  reader->prepare(table);
-
-  // Execute the reader to read the point cloud
-  pdal::PointViewSet view_set = reader->execute(table);
-
-  // Take first view from view set (contains the point cloud data)
-  pdal::PointViewPtr view = *view_set.begin();
-  if (view->empty()) throw std::runtime_error("Point cloud is empty!");
-
-  // Update x,y,z fields of pointcloud with transformed values
-  UpdateTransformedPointcloud(view, x_updated);
-
-  // PDAL Writer
-  pdal::Stage* writer = factory.createStage(pdal_writer_type);
-  pdal::Options writer_options = CreatePDALWriterOptions(extension_out);
-  writer_options.add("filename", path_out);
-  writer->setOptions(writer_options);
-
-  // Link the reader to the writer with a buffer reader
-  pdal::BufferReader buffer_reader;
-  buffer_reader.addView(view);
-  writer->setInput(buffer_reader);
-
-  // Prepare the writer
-  writer->prepare(table);
-
-  // Execute the writer to write the point cloud
-  writer->execute(table);
-}
-
-std::string CreatePDALReaderType(const std::string& extension) {
-  std::string pdal_reader_type;
-  if (extension == ".las" || extension == ".laz") {
-    pdal_reader_type = "readers.las";
-  } else if (extension == ".ply") {
-    pdal_reader_type = "readers.ply";
-  } else if (extension == ".xyz" || extension == ".txt") {
-    pdal_reader_type = "readers.text";
-  } else {
-    std::string error_string;
-    error_string += "File format '" + extension + "' is not supported.\n";
-    throw std::runtime_error(error_string);
+  std::ofstream fout(path_out);
+  if (!fout.is_open()) {
+    throw std::runtime_error("Cannot open output file: " + path_out);
   }
-  return pdal_reader_type;
-}
 
-std::string CreatePDALWriterType(const std::string& extension) {
-  std::string pdal_writer_type;
-  if (extension == ".las" || extension == ".laz") {
-    pdal_writer_type = "writers.las";
-  } else if (extension == ".ply") {
-    pdal_writer_type = "writers.ply";
-  } else if (extension == ".xyz" || extension == ".txt") {
-    pdal_writer_type = "writers.text";
-  } else {
-    std::string error_string;
-    error_string += "File format '" + extension + "' is not supported.\n";
-    throw std::runtime_error(error_string);
-  }
-  return pdal_writer_type;
-}
+  // Use a high level of precision to prevent truncating coordinate values (essential for UTM formats)
+  fout << std::setprecision(12);
 
-pdal::Options CreatePDALWriterOptions(const std::string& extension) {
-  pdal::Options pdal_writer_options;
-  if (extension == ".las" || extension == ".laz") {
-    pdal_writer_options.add("forward", "all");
-    pdal_writer_options.add("extra_dims", "all");
-  } else if (extension == ".ply") {
-  } else if (extension == ".xyz" || extension == ".txt") {
-    pdal_writer_options.add("precision", "4");
-  } else {
-    std::string error_string;
-    error_string += "File format '" + extension + "' is not supported.\n";
-    throw std::runtime_error(error_string);
+  std::string line;
+  bool first_line = true;
+  size_t row_idx = 0;
+
+  Eigen::Index x_col = x_updated.namedColIndex("x");
+  Eigen::Index y_col = x_updated.namedColIndex("y");
+  Eigen::Index z_col = x_updated.namedColIndex("z");
+
+  while (std::getline(fin, line)) {
+    // Strip trailing newlines/carriage returns
+    line.erase(line.find_last_not_of(" \r\n") + 1);
+    if (line.empty()) {
+      fout << "\n";
+      continue;
+    }
+
+    // Determine if header by checking if the first token is a valid double
+    std::stringstream ss(line);
+    std::string cell;
+    std::getline(ss, cell, ',');
+    cell.erase(0, cell.find_first_not_of(" \t"));
+    cell.erase(cell.find_last_not_of(" \t") + 1);
+
+    bool is_header = false;
+    try {
+      std::stod(cell);
+    } catch (const std::invalid_argument&) {
+      if (first_line) is_header = true;
+    }
+
+    if (is_header) {
+      fout << line << "\n"; // pass header directly to the output
+      first_line = false;
+      continue;
+    }
+
+    if (row_idx < static_cast<size_t>(x_updated.rows())) {
+      // Find the comma boundaries for the first 3 variables to swap them out
+      size_t pos1 = line.find(',');
+      size_t pos2 = pos1 != std::string::npos ? line.find(',', pos1 + 1) : std::string::npos;
+      size_t pos3 = pos2 != std::string::npos ? line.find(',', pos2 + 1) : std::string::npos;
+
+      fout << x_updated(row_idx, x_col) << ","
+           << x_updated(row_idx, y_col) << ","
+           << x_updated(row_idx, z_col);
+
+      // Print remainder of original CSV sequence unmodified
+      if (pos3 != std::string::npos) {
+        fout << line.substr(pos3);
+      }
+      fout << "\n";
+      row_idx++;
+    } else {
+      // Catch-all: output trailing unrelated lines, if they somehow exist
+      fout << line << "\n";
+    }
+
+    first_line = false;
   }
-  return pdal_writer_options;
 }

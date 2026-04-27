@@ -47,8 +47,10 @@ Params ParseUserInputs(int argc, char** argv);
 
 void ReportIterationResults(const IterationResults& iteration_results);
 
-int main(int argc, char** argv) {
-  try {
+int main(int argc, char** argv)
+{
+
+    try {
     Params params = ParseUserInputs(argc, argv);
 
     auto& profiler = Profiler::Instance();
@@ -67,17 +69,24 @@ int main(int argc, char** argv) {
     auto X_mov =
         ImportFileToMatrix(params.movable, true, params.matching_mode == "id" ? true : false);
 
-    auto pc_fix{PtCloud(X_fix(Eigen::all, {X_fix.namedColIndex("x"), X_fix.namedColIndex("y"),
-                                           X_fix.namedColIndex("z")}))};
-    auto pc_mov{PtCloud(X_mov(Eigen::all, {X_fix.namedColIndex("x"), X_fix.namedColIndex("y"),
-                                           X_fix.namedColIndex("z")}))};
+    std::cout << "Fixed Dimensions: " << X_fix.rows() << " rows x " << X_fix.cols() << " cols" << std::endl;
+    std::cout << "Fixed Datatype:   " << typeid(decltype(X_fix)::Scalar).name() << std::endl;
+
+    std::cout << "Moving Dimensions: " << X_mov.rows() << " rows x " << X_mov.cols() << " cols"
+              << std::endl;
+    std::cout << "Moving Datatype:   " << typeid(decltype(X_mov)::Scalar).name() << std::endl;
+
+
+    PtCloud pc_fix(X_fix.leftCols(3));
+    PtCloud pc_mov(X_mov.leftCols(3));
 
     pc_fix.SetNormals(X_fix.namedCol("nx"), X_fix.namedCol("ny"), X_fix.namedCol("nz"));
     pc_mov.SetNormals(X_mov.namedCol("nx"), X_mov.namedCol("ny"), X_mov.namedCol("nz"));
-    if (params.matching_mode == "id") {
-      pc_fix.SetCorrespondenceId(X_fix.namedCol("correspondence_id"));
-      pc_mov.SetCorrespondenceId(X_mov.namedCol("correspondence_id"));
-    }
+
+	if (params.matching_mode == "id") {
+		pc_fix.SetCorrespondenceId(X_fix.namedCol("correspondence_id"));
+		pc_mov.SetCorrespondenceId(X_mov.namedCol("correspondence_id"));
+	}
     if (!params.suppress_logging) {
       std::cout << fmt::format("  Fixed point cloud has {:d} points\n", pc_fix.NumPts());
       std::cout << fmt::format("  Movable point cloud has {:d} points\n", pc_mov.NumPts());

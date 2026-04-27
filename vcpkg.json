@@ -2,7 +2,9 @@
   "name": "3d-nonrigid-tricubic-pointcloud-registration",
   "version": "1.0.0",
   "dependencies": [
-    "eigen3",
+    "spdlog",
+	"pdal",
+	"eigen3",
     "nanoflann",
     "cxxopts",
     "fmt"
