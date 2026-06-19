@@ -82,6 +82,7 @@ set_target_properties(nonrigid-icp-transform PROPERTIES DEBUG_POSTFIX _d)
 
 # Unit and smoke tests
 set(NRICP_DATA_SMOKE_TRANSFORM "${CMAKE_BINARY_DIR}/results/data_fixed_moving_v50_b1_i15_w001_e2_n35000_test.nricp")
+set(NRICP_DATA_SMOKE_TRANSFORM_MOVING_XYZ "${CMAKE_BINARY_DIR}/results/data_fixed_moving_xyz_v50_b1_i15_w001_e2_n35000_test.nricp")
 set(NRICP_DATA_SMOKE_TRANSFORMED "${CMAKE_BINARY_DIR}/results/moving_pc_transformed_v50_b1_i15_w001_e2_n35000_test.csv")
 set(NRICP_ADDITIONAL_TEST_IDS 2 3 4 5 6)
 set(NRICP_ADDITIONAL_TRANSFORMS)
@@ -107,6 +108,7 @@ target_compile_definitions(nricp-file-tests PRIVATE
     NRICP_MOVING_PC="${CMAKE_SOURCE_DIR}/data/moving_pc.csv"
     NRICP_GOLDEN_TRANSFORM="${CMAKE_SOURCE_DIR}/test/golden/data_fixed_moving_v50_b1_i15_w001_e2_n35000.nricp"
     NRICP_SMOKE_TRANSFORM="${NRICP_DATA_SMOKE_TRANSFORM}"
+    NRICP_SMOKE_TRANSFORM_MOVING_XYZ="${NRICP_DATA_SMOKE_TRANSFORM_MOVING_XYZ}"
     NRICP_ADDITIONAL_TRANSFORMS="${NRICP_ADDITIONAL_TRANSFORMS_DEF}"
     NRICP_ADDITIONAL_GOLDENS="${NRICP_ADDITIONAL_GOLDENS_DEF}")
 set_target_properties(nricp-file-tests PROPERTIES DEBUG_POSTFIX _d)
@@ -138,7 +140,23 @@ add_test(
     NAME nricp-file-tests.DataSmoke
     COMMAND $<TARGET_FILE:nricp-file-tests> --gtest_filter=-NricpAdditionalFits.*
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(nricp-file-tests.DataSmoke PROPERTIES DEPENDS nonrigid-icp.DataSmokeFit)
+
+add_test(
+    NAME nonrigid-icp.DataSmokeFitMovingXyzOnly
+    COMMAND $<TARGET_FILE:nonrigid-icp>
+            -f ${CMAKE_SOURCE_DIR}/data/fixed_pc.csv
+            -m ${CMAKE_SOURCE_DIR}/data/moving_pc_xyz.csv
+            -t ${NRICP_DATA_SMOKE_TRANSFORM_MOVING_XYZ}
+            -v 50
+            -b 1
+            -i 15
+            -w 0.01,0.01,0.01,0.01
+            -e 2.0
+            -n 35000
+            -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(nricp-file-tests.DataSmoke PROPERTIES
+    DEPENDS "nonrigid-icp.DataSmokeFit;nonrigid-icp.DataSmokeFitMovingXyzOnly")
 
 foreach(additional_id IN LISTS NRICP_ADDITIONAL_TEST_IDS)
     add_test(

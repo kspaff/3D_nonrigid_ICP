@@ -24,6 +24,10 @@
 #define NRICP_ADDITIONAL_GOLDENS ""
 #endif
 
+#ifndef NRICP_SMOKE_TRANSFORM_MOVING_XYZ
+#define NRICP_SMOKE_TRANSFORM_MOVING_XYZ ""
+#endif
+
 namespace {
 
 template <typename T>
@@ -195,6 +199,25 @@ testing::AssertionResult NricpFilesNear(const std::filesystem::path& actual_path
          << " at payload index " << max_abs_diff_index;
 }
 
+void ExpectLockedFitMatchesGolden(const std::filesystem::path& transform_path) {
+  const std::filesystem::path golden_path{NRICP_GOLDEN_TRANSFORM};
+  ASSERT_TRUE(std::filesystem::exists(transform_path));
+  ASSERT_TRUE(std::filesystem::exists(golden_path));
+
+  constexpr std::uintmax_t kExpectedSize = 85480;
+  constexpr std::uint64_t kExpectedFnv1a64 = 0x79DAB4243AB1C0B8ull;
+  // Direct Hermite weights and the SPD solve reorder float arithmetic relative to the reference.
+  constexpr double kPayloadEpsilon = 1e-4;
+  EXPECT_EQ(std::filesystem::file_size(golden_path), kExpectedSize);
+  EXPECT_EQ(HashFileFnv1a64(golden_path), kExpectedFnv1a64);
+  EXPECT_EQ(std::filesystem::file_size(transform_path), kExpectedSize);
+
+  if (HashFileFnv1a64(transform_path) != kExpectedFnv1a64) {
+    const auto comparison = NricpFilesNear(transform_path, golden_path, kPayloadEpsilon);
+    EXPECT_TRUE(comparison) << comparison.message();
+  }
+}
+
 }  // namespace
 
 TEST(NricpDataSmoke, UsesSinglePrecisionInMemory) {
@@ -246,23 +269,11 @@ TEST(NricpDataSmoke, GeneratedFileHasExpectedV1Layout) {
 }
 
 TEST(NricpDataSmoke, GeneratedFileMatchesGoldenFitOutput) {
-  const std::filesystem::path transform_path{NRICP_SMOKE_TRANSFORM};
-  const std::filesystem::path golden_path{NRICP_GOLDEN_TRANSFORM};
-  ASSERT_TRUE(std::filesystem::exists(transform_path));
-  ASSERT_TRUE(std::filesystem::exists(golden_path));
+  ExpectLockedFitMatchesGolden(NRICP_SMOKE_TRANSFORM);
+}
 
-  constexpr std::uintmax_t kExpectedSize = 85480;
-  constexpr std::uint64_t kExpectedFnv1a64 = 0x79DAB4243AB1C0B8ull;
-  // Direct Hermite weights and the SPD solve reorder float arithmetic relative to the reference.
-  constexpr double kPayloadEpsilon = 1e-4;
-  EXPECT_EQ(std::filesystem::file_size(golden_path), kExpectedSize);
-  EXPECT_EQ(HashFileFnv1a64(golden_path), kExpectedFnv1a64);
-  EXPECT_EQ(std::filesystem::file_size(transform_path), kExpectedSize);
-
-  if (HashFileFnv1a64(transform_path) != kExpectedFnv1a64) {
-    const auto comparison = NricpFilesNear(transform_path, golden_path, kPayloadEpsilon);
-    EXPECT_TRUE(comparison) << comparison.message();
-  }
+TEST(NricpDataSmoke, MovingCloudWithoutNormalsMatchesGoldenFitOutput) {
+  ExpectLockedFitMatchesGolden(NRICP_SMOKE_TRANSFORM_MOVING_XYZ);
 }
 
 TEST(NricpAdditionalFits, GeneratedFilesMatchGoldens) {

@@ -66,10 +66,9 @@ int main(int argc, char** argv)
     if (!params.suppress_logging) {
       std::cout << "Create point cloud objects\n";
     }
-    auto X_fix =
-        ImportFileToMatrix(params.fixed, true, params.matching_mode == "id" ? true : false);
-    auto X_mov =
-        ImportFileToMatrix(params.movable, true, params.matching_mode == "id" ? true : false);
+    const bool matching_by_id{params.matching_mode == "id"};
+    auto X_fix = ImportFileToMatrix(params.fixed, true, matching_by_id);
+    auto X_mov = ImportFileToMatrix(params.movable, matching_by_id, matching_by_id);
 
     std::cout << "Fixed Dimensions: " << X_fix.rows() << " rows x " << X_fix.cols() << " cols" << std::endl;
     std::cout << "Fixed Datatype:   " << typeid(decltype(X_fix)::Scalar).name() << std::endl;
@@ -83,9 +82,11 @@ int main(int argc, char** argv)
     PtCloud pc_mov(X_mov.leftCols(3));
 
     pc_fix.SetNormals(X_fix.namedCol("nx"), X_fix.namedCol("ny"), X_fix.namedCol("nz"));
-    pc_mov.SetNormals(X_mov.namedCol("nx"), X_mov.namedCol("ny"), X_mov.namedCol("nz"));
+    if (matching_by_id) {
+      pc_mov.SetNormals(X_mov.namedCol("nx"), X_mov.namedCol("ny"), X_mov.namedCol("nz"));
+    }
 
-	if (params.matching_mode == "id") {
+	if (matching_by_id) {
 		pc_fix.SetCorrespondenceId(X_fix.namedCol("correspondence_id"));
 		pc_mov.SetCorrespondenceId(X_mov.namedCol("correspondence_id"));
 	}
