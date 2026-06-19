@@ -1712,6 +1712,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 
 - The plan's original "initial production mode should use FP64" sequencing is superseded for this repository pass because the user explicitly requested single precision. To avoid silently changing `.nricp` v1 compatibility, only the in-memory compute scalar was changed to `float`; v1 files remain double-on-disk.
 - A direct Hermite-weight evaluator refactor was started but backed out before verification because the user requested a golden `.nricp` output diff before algorithm changes. Further evaluator or solver changes should proceed only after the golden-output regression is intentionally updated or preserved.
+- 2026-06-19: Tried Section 19's active-unknown compact solve on top of the direct-ridge CG optimizer. The attempt passed the locked smoke/golden tests and reduced the logged unknown count from 10,560 to about 3,816 after the first iteration, but it was slower for this data/profile: `build/results/profile_after_section19_active_unknowns.nricp` finished in 10.663 s with optimization mean 670.2 ms, versus 10.098 s and optimization mean 634.8 ms for the full direct-ridge CG system. The current scalar-triplet remap/scatter overhead outweighed the smaller solve, so the active-unknown code was backed out. A future implementation should revisit this only with a block/node-major data model that avoids building and remapping full scalar triplets first.
 
 ## Questions
 

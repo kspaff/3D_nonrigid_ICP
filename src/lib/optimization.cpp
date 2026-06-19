@@ -55,8 +55,6 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
                    correspondences.pc_mov().y_translation_grid().num_grid_vals() +
                    correspondences.pc_mov().z_translation_grid().num_grid_vals()};
 
-  int num_observations{X.num + num_unknowns};
-
   std::vector<Triplet> J_triplets;
   J_triplets.reserve(J_pc_mov_x_nx_triplets.size() + J_pc_mov_y_ny_triplets.size() +
                      J_pc_mov_z_nz_triplets.size());
@@ -114,7 +112,7 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
   correspondences.pc_mov().UpdateXt();
   correspondences.ComputeDists();
 
-  optimization_results.num_observations = num_observations;
+  optimization_results.num_observations = X.num + num_unknowns;
   optimization_results.num_unknowns = num_unknowns;
 
   return optimization_results;
