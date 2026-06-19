@@ -77,6 +77,8 @@ if(NRICP_ENABLE_CUDA)
     find_package(CUDAToolkit 13.0 REQUIRED)
 
     add_library(libnonrigid_icp_cuda STATIC
+        src/lib/cuda/cuda_jacobian.cu
+        src/lib/cuda/cuda_jacobian.hpp
         src/lib/cuda/cuda_runtime.cu
         src/lib/cuda/cuda_runtime.hpp
         src/lib/cuda/cuda_transform.cu
@@ -88,6 +90,9 @@ if(NRICP_ENABLE_CUDA)
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
         DEBUG_POSTFIX _d)
+
+    target_link_libraries(libnonrigid_icp PUBLIC libnonrigid_icp_cuda)
+    target_compile_definitions(libnonrigid_icp PUBLIC NRICP_ENABLE_CUDA=1)
 endif()
 
 # nonrigid-icp executable
@@ -105,6 +110,10 @@ set_target_properties(nonrigid-icp-transform PROPERTIES DEBUG_POSTFIX _d)
 # Unit and smoke tests
 set(NRICP_DATA_SMOKE_TRANSFORM "${CMAKE_BINARY_DIR}/results/data_fixed_moving_v50_b1_i15_w001_e2_n35000_test.nricp")
 set(NRICP_DATA_SMOKE_TRANSFORM_REPEAT "${CMAKE_BINARY_DIR}/results/data_fixed_moving_v50_b1_i15_w001_e2_n35000_repeat_test.nricp")
+set(NRICP_DATA_SMOKE_TRANSFORM_GPU "")
+if(NRICP_ENABLE_CUDA)
+    set(NRICP_DATA_SMOKE_TRANSFORM_GPU "${CMAKE_BINARY_DIR}/results/data_fixed_moving_gpu_v50_b1_i15_w001_e2_n35000_test.nricp")
+endif()
 set(NRICP_DATA_SMOKE_TRANSFORM_MOVING_XYZ "${CMAKE_BINARY_DIR}/results/data_fixed_moving_xyz_v50_b1_i15_w001_e2_n35000_test.nricp")
 set(NRICP_DATA_SMOKE_TRANSFORMED "${CMAKE_BINARY_DIR}/results/moving_pc_transformed_v50_b1_i15_w001_e2_n35000_test.csv")
 set(NRICP_DATA_SMOKE_TRANSFORMED_SINGLE_CHUNK "${CMAKE_BINARY_DIR}/results/moving_pc_transformed_v50_b1_i15_w001_e2_n35000_single_chunk_test.csv")
@@ -133,6 +142,7 @@ target_compile_definitions(nricp-file-tests PRIVATE
     NRICP_GOLDEN_TRANSFORM="${CMAKE_SOURCE_DIR}/test/golden/data_fixed_moving_v50_b1_i15_w001_e2_n35000.nricp"
     NRICP_SMOKE_TRANSFORM="${NRICP_DATA_SMOKE_TRANSFORM}"
     NRICP_SMOKE_TRANSFORM_REPEAT="${NRICP_DATA_SMOKE_TRANSFORM_REPEAT}"
+    NRICP_SMOKE_TRANSFORM_GPU="${NRICP_DATA_SMOKE_TRANSFORM_GPU}"
     NRICP_SMOKE_TRANSFORM_MOVING_XYZ="${NRICP_DATA_SMOKE_TRANSFORM_MOVING_XYZ}"
     NRICP_SMOKE_TRANSFORMED="${NRICP_DATA_SMOKE_TRANSFORMED}"
     NRICP_SMOKE_TRANSFORMED_SINGLE_CHUNK="${NRICP_DATA_SMOKE_TRANSFORMED_SINGLE_CHUNK}"
@@ -204,8 +214,33 @@ add_test(
             -n 35000
             -s
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+set(NRICP_DATA_SMOKE_TEST_DEPENDENCIES
+    nonrigid-icp.DataSmokeFit
+    nonrigid-icp.DataSmokeFitRepeat
+    nonrigid-icp.DataSmokeFitMovingXyzOnly)
+
+if(NRICP_ENABLE_CUDA)
+    add_test(
+        NAME nonrigid-icp.DataSmokeFitGpu
+        COMMAND $<TARGET_FILE:nonrigid-icp>
+                -f ${CMAKE_SOURCE_DIR}/data/fixed_pc.csv
+                -m ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
+                -t ${NRICP_DATA_SMOKE_TRANSFORM_GPU}
+                -x gpu
+                -v 50
+                -b 1
+                -i 15
+                -w 0.01,0.01,0.01,0.01
+                -e 2.0
+                -n 35000
+                -s
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    list(APPEND NRICP_DATA_SMOKE_TEST_DEPENDENCIES nonrigid-icp.DataSmokeFitGpu)
+endif()
+
 set_tests_properties(nricp-file-tests.DataSmoke PROPERTIES
-    DEPENDS "nonrigid-icp.DataSmokeFit;nonrigid-icp.DataSmokeFitRepeat;nonrigid-icp.DataSmokeFitMovingXyzOnly")
+    DEPENDS "${NRICP_DATA_SMOKE_TEST_DEPENDENCIES}")
 
 foreach(additional_id IN LISTS NRICP_ADDITIONAL_TEST_IDS)
     add_test(
@@ -260,22 +295,24 @@ add_test(
 set_tests_properties(nricp-file-tests.TransformOutputs PROPERTIES
     DEPENDS "nonrigid-icp.DataSmokeTransform;nonrigid-icp.DataSmokeTransformSingleChunk")
 
-add_test(
-    NAME nonrigid-icp.GpuBackendNotImplemented
-    COMMAND $<TARGET_FILE:nonrigid-icp>
-            -f ${CMAKE_SOURCE_DIR}/data/fixed_pc.csv
-            -m ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
-            -t ${CMAKE_BINARY_DIR}/results/gpu_backend_not_implemented.nricp
-            -x gpu
-            -v 50
-            -b 1
-            -i 15
-            -w 0.01,0.01,0.01,0.01
-            -e 2.0
-            -n 35000
-            -s
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(nonrigid-icp.GpuBackendNotImplemented PROPERTIES WILL_FAIL TRUE)
+if(NOT NRICP_ENABLE_CUDA)
+    add_test(
+        NAME nonrigid-icp.GpuBackendNotImplemented
+        COMMAND $<TARGET_FILE:nonrigid-icp>
+                -f ${CMAKE_SOURCE_DIR}/data/fixed_pc.csv
+                -m ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
+                -t ${CMAKE_BINARY_DIR}/results/gpu_backend_not_implemented.nricp
+                -x gpu
+                -v 50
+                -b 1
+                -i 15
+                -w 0.01,0.01,0.01,0.01
+                -e 2.0
+                -n 35000
+                -s
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(nonrigid-icp.GpuBackendNotImplemented PROPERTIES WILL_FAIL TRUE)
+endif()
 
 add_test(
     NAME nonrigid-icp-transform.GpuBackendNotImplemented

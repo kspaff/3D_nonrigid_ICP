@@ -57,10 +57,10 @@ Usage:
                                 transform a point cloud with this transform
                                 file.
   -x, --execution_backend arg   Execution backend. Available modes are
-                                "cpu" and "gpu". The GPU backend is
-                                reserved for future CUDA work; CPU is the
-                                current optimized implementation. (default:
-                                cpu)
+                                "cpu" and "gpu". The GPU backend requires
+                                a CUDA-enabled build and currently offloads
+                                fitting assembly; CPU is the default
+                                optimized implementation. (default: cpu)
   -v, --voxel_size arg          Voxel size of translation grids (default:
                                 1)
   -g, --grid_limits arg         Limits of translation grids to be defined

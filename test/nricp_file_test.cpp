@@ -34,6 +34,10 @@
 #define NRICP_SMOKE_TRANSFORM_REPEAT ""
 #endif
 
+#ifndef NRICP_SMOKE_TRANSFORM_GPU
+#define NRICP_SMOKE_TRANSFORM_GPU ""
+#endif
+
 #ifndef NRICP_SMOKE_TRANSFORMED
 #define NRICP_SMOKE_TRANSFORMED ""
 #endif
@@ -301,6 +305,14 @@ TEST(NricpDataSmoke, RepeatedFitMatchesPrimaryFitOutput) {
     const auto comparison = NricpFilesNear(repeat_path, primary_path, 1e-4);
     EXPECT_TRUE(comparison) << comparison.message();
   }
+}
+
+TEST(NricpDataSmoke, GpuGeneratedFileMatchesGoldenFitOutput) {
+  const std::filesystem::path transform_path{NRICP_SMOKE_TRANSFORM_GPU};
+  if (transform_path.empty()) {
+    GTEST_SKIP() << "CUDA fit output is not configured for this build.";
+  }
+  ExpectLockedFitMatchesGolden(transform_path);
 }
 
 TEST(NricpAdditionalFits, GeneratedFilesMatchGoldens) {

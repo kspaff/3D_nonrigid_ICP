@@ -175,8 +175,12 @@ int main(int argc, char** argv)
       if (params.profiling) profiler.Stop("A.04 Matching");
 
       if (params.profiling) profiler.Start("A.05 Optimization");
-      Optimization optimization{};
-      iteration_results.optimization_results = Optimization::Solve(correspondences, params.weights);
+      if (params.execution_backend == "gpu") {
+        iteration_results.optimization_results =
+            Optimization::SolveGpu(correspondences, params.weights);
+      } else {
+        iteration_results.optimization_results = Optimization::Solve(correspondences, params.weights);
+      }
       if (params.profiling) profiler.Stop("A.05 Optimization");
 
       if (iteration_results.optimization_results.success) {
@@ -232,8 +236,9 @@ Params ParseUserInputs(int argc, char** argv) {
     "point cloud with this transform file.",
     cxxopts::value<std::string>())
     ("x,execution_backend",
-    "Execution backend. Available modes are \"cpu\" and \"gpu\". The GPU backend is reserved for "
-    "future CUDA work; CPU is the current optimized implementation.",
+    "Execution backend. Available modes are \"cpu\" and \"gpu\". The GPU backend requires a "
+    "CUDA-enabled build and currently offloads fitting assembly; CPU is the default optimized "
+    "implementation.",
     cxxopts::value<std::string>()->default_value("cpu"))
     ("v,voxel_size",
     "Voxel size of translation grids",
@@ -312,10 +317,12 @@ Params ParseUserInputs(int argc, char** argv) {
     throw std::runtime_error(error_string);
   }
 
+#ifndef NRICP_ENABLE_CUDA
   if (params.execution_backend == "gpu") {
     throw std::runtime_error(
-        "GPU execution backend is not implemented yet; rerun with --execution_backend cpu.");
+        "GPU execution backend is not available in this build; rerun with --execution_backend cpu.");
   }
+#endif
 
   if (params.matching_mode == "id") {
     params.num_iterations = 1;

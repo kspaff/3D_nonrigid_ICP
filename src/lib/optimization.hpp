@@ -15,6 +15,8 @@ class Optimization {
   Optimization();
   static OptimizationResults Solve(Correspondences& correspondences,
                                    const std::vector<Scalar>& weights_zero_observations);
+  static OptimizationResults SolveGpu(Correspondences& correspondences,
+                                      const std::vector<Scalar>& weights_zero_observations);
 };
 
 VectorX BuildZeroObservationWeights(const int num_unknowns,
