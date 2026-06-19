@@ -55,13 +55,11 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
                    correspondences.pc_mov().y_translation_grid().num_grid_vals() +
                    correspondences.pc_mov().z_translation_grid().num_grid_vals()};
 
-  auto J_direct_obs_triplets(Optimization::SparseIdentity(num_unknowns));
-
   int num_observations{X.num + num_unknowns};
 
   std::vector<Triplet> J_triplets;
   J_triplets.reserve(J_pc_mov_x_nx_triplets.size() + J_pc_mov_y_ny_triplets.size() +
-                     J_pc_mov_z_nz_triplets.size() + J_direct_obs_triplets.size());
+                     J_pc_mov_z_nz_triplets.size());
 
   // clang-format off
   Optimization::AddSubblockTriplets(0,
@@ -76,37 +74,31 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
                       0,
                       J_pc_mov_z_nz_triplets,
                       J_triplets);
-  Optimization::AddSubblockTriplets(X.num,
-                      0,
-                      J_direct_obs_triplets,
-                      J_triplets);
   // clang-format on
 
-  SparseMatrix J(num_observations, num_unknowns);
+  SparseMatrix J(X.num, num_unknowns);
   J.setFromTriplets(J_triplets.begin(), J_triplets.end());
 
   const int num_grid_vals_per_component{correspondences.pc_mov().x_translation_grid().num_grid_vals()};
   const VectorX direct_obs_weights{
       BuildDirectObservationWeights(num_unknowns, num_grid_vals_per_component, weights_zero_observations)};
-  VectorX p(num_observations);
-  p << VectorX::Ones(correspondences.num()), direct_obs_weights;
-  auto P{p.asDiagonal()};
+  SparseMatrix normal_matrix{J.transpose() * J};
+  for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
+    normal_matrix.coeffRef(unknown_idx, unknown_idx) += direct_obs_weights(unknown_idx);
+  }
+  normal_matrix.makeCompressed();
 
-  VectorX b(num_observations);
-  VectorX b0(num_observations);
-  b = VectorX::Zero(num_observations);
-  b0 << correspondences.point_to_plane_dists().dists, VectorX::Zero(num_unknowns);
-  auto l{b - b0};
+  const VectorX rhs{J.transpose() * (-correspondences.point_to_plane_dists().dists)};
 
   // Solve!
   VectorX xhat(num_unknowns);
-  Eigen::BiCGSTAB<SparseMatrix> solver;
-  solver.compute(J.transpose() * P * J);
+  Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower | Eigen::Upper> solver;
+  solver.compute(normal_matrix);
   if (solver.info() != Eigen::Success) {
     optimization_results.success = false;
     return optimization_results;
   }
-  xhat = solver.solve(J.transpose() * P * l);
+  xhat = solver.solve(rhs);
   if (solver.info() != Eigen::Success) {
     optimization_results.success = false;
     return optimization_results;
@@ -126,15 +118,6 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
   optimization_results.num_unknowns = num_unknowns;
 
   return optimization_results;
-}
-
-std::vector<Triplet> Optimization::SparseIdentity(const int& n) {
-  std::vector<Triplet> triplets;
-  triplets.reserve(n);
-  for (int i = 0; i < n; i++) {
-    triplets.emplace_back(i, i, Scalar{1});
-  }
-  return triplets;
 }
 
 std::vector<Triplet> Optimization::MultiplyWithComponentsOfNormalVectors(

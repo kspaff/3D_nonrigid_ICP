@@ -229,8 +229,8 @@ TEST(NricpDataSmoke, GeneratedFileMatchesGoldenFitOutput) {
 
   constexpr std::uintmax_t kExpectedSize = 85480;
   constexpr std::uint64_t kExpectedFnv1a64 = 0x79DAB4243AB1C0B8ull;
-  // Direct Hermite weights reorder float arithmetic relative to X_power * inv_A.
-  constexpr double kPayloadEpsilon = 5e-5;
+  // Direct Hermite weights and the SPD solve reorder float arithmetic relative to the reference.
+  constexpr double kPayloadEpsilon = 1e-4;
   EXPECT_EQ(std::filesystem::file_size(golden_path), kExpectedSize);
   EXPECT_EQ(HashFileFnv1a64(golden_path), kExpectedFnv1a64);
   EXPECT_EQ(std::filesystem::file_size(transform_path), kExpectedSize);

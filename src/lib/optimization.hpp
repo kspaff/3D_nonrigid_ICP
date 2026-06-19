@@ -17,7 +17,6 @@ class Optimization {
                                    const std::vector<Scalar>& weights_zero_observations);
 
  private:
-  static std::vector<Triplet> SparseIdentity(const int& n);
   static std::vector<Triplet> MultiplyWithComponentsOfNormalVectors(
       const std::vector<Triplet>& triplets_in, const VectorX& n_component);
   static void AddSubblockTriplets(const int& first_row, const int& first_col,
