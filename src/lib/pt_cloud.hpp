@@ -59,6 +59,11 @@ class PtCloud {
   MatrixX64 X_weights_;
 };
 
+MatrixX3 ApplyTranslationGrids(const MatrixX3& X,
+                               const TranslationGrid& x_translation_grid,
+                               const TranslationGrid& y_translation_grid,
+                               const TranslationGrid& z_translation_grid);
+
 struct HeaderInfo {
   char identifier[10]{"nricp"};
   int fileversion{1};

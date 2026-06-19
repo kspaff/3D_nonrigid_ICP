@@ -70,17 +70,13 @@ int main(int argc, char** argv) {
       Index last_row = (std::min)(i + chunk_size, total_rows);  // (std::min) to avoid macro issues
       auto row_indices = Eigen::seq(first_row, last_row - 1);
 
-      // Transform points in chunk
-      auto pc_mov_chunk{PtCloud(
-          X(row_indices, {X.namedColIndex("x"), X.namedColIndex("y"), X.namedColIndex("z")}))};
-      pc_mov_chunk.x_translation_grid() = transform_grid_holder.x_translation_grid();
-      pc_mov_chunk.y_translation_grid() = transform_grid_holder.y_translation_grid();
-      pc_mov_chunk.z_translation_grid() = transform_grid_holder.z_translation_grid();
-      pc_mov_chunk.InitMatricesForUpdateXt();
-      pc_mov_chunk.UpdateXt();
-
-      // Update points
-      X(row_indices, Eigen::seqN(0, 3)) = pc_mov_chunk.Xt();
+      MatrixX3 chunk_points =
+          X(row_indices, {X.namedColIndex("x"), X.namedColIndex("y"), X.namedColIndex("z")});
+      X(row_indices, Eigen::seqN(0, 3)) =
+          ApplyTranslationGrids(chunk_points,
+                                transform_grid_holder.x_translation_grid(),
+                                transform_grid_holder.y_translation_grid(),
+                                transform_grid_holder.z_translation_grid());
     }
     if (params.profiling) profiler.Stop("A.03 Transformation of point cloud");
 

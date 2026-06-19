@@ -32,6 +32,31 @@ Scalar EvaluateGridAtPoint(
   return value;
 }
 
+MatrixX3 ApplyTranslationGridsWithReferences(
+    const MatrixX3& X,
+    const TranslationGrid& x_translation_grid,
+    const TranslationGrid& y_translation_grid,
+    const TranslationGrid& z_translation_grid,
+    const MatrixX64& X_weights,
+    const Eigen::MatrixX3i& X_voxel_idx) {
+  MatrixX3 Xt(X.rows(), 3);
+
+  const auto& x_grid_vals = x_translation_grid.grid_vals();
+  const auto& y_grid_vals = y_translation_grid.grid_vals();
+  const auto& z_grid_vals = z_translation_grid.grid_vals();
+
+  for (Eigen::Index point_idx = 0; point_idx < X.rows(); ++point_idx) {
+    const auto weights = X_weights.row(point_idx);
+    const auto voxel_idx = X_voxel_idx.row(point_idx);
+
+    Xt(point_idx, 0) = X(point_idx, 0) + EvaluateGridAtPoint(x_grid_vals, weights, voxel_idx);
+    Xt(point_idx, 1) = X(point_idx, 1) + EvaluateGridAtPoint(y_grid_vals, weights, voxel_idx);
+    Xt(point_idx, 2) = X(point_idx, 2) + EvaluateGridAtPoint(z_grid_vals, weights, voxel_idx);
+  }
+
+  return Xt;
+}
+
 }  // namespace
 
 PtCloud::PtCloud(MatrixX X) : X_{X} {}
@@ -301,23 +326,8 @@ void PtCloud::InitMatricesForUpdateXt() {
 }
 
 void PtCloud::UpdateXt() {
-  Xt_.resize(X_.rows(), 3);
-
-  const auto& x_grid_vals = x_translation_grid_.grid_vals();
-  const auto& y_grid_vals = y_translation_grid_.grid_vals();
-  const auto& z_grid_vals = z_translation_grid_.grid_vals();
-
-  for (Eigen::Index point_idx = 0; point_idx < X_.rows(); ++point_idx) {
-    const auto weights = X_weights_.row(point_idx);
-    const auto voxel_idx = X_voxel_idx_.row(point_idx);
-
-    Xt_(point_idx, 0) =
-        X_(point_idx, 0) + EvaluateGridAtPoint(x_grid_vals, weights, voxel_idx);
-    Xt_(point_idx, 1) =
-        X_(point_idx, 1) + EvaluateGridAtPoint(y_grid_vals, weights, voxel_idx);
-    Xt_(point_idx, 2) =
-        X_(point_idx, 2) + EvaluateGridAtPoint(z_grid_vals, weights, voxel_idx);
-  }
+  Xt_ = ApplyTranslationGridsWithReferences(X_, x_translation_grid_, y_translation_grid_,
+                                            z_translation_grid_, X_weights_, X_voxel_idx_);
 }
 
 const MatrixX& PtCloud::X() { return X_; }
@@ -336,3 +346,13 @@ Scalar PtCloud::y_min() { return X_.col(1).minCoeff(); }
 Scalar PtCloud::y_max() { return X_.col(1).maxCoeff(); }
 Scalar PtCloud::z_min() { return X_.col(2).minCoeff(); }
 Scalar PtCloud::z_max() { return X_.col(2).maxCoeff(); }
+
+MatrixX3 ApplyTranslationGrids(const MatrixX3& X,
+                               const TranslationGrid& x_translation_grid,
+                               const TranslationGrid& y_translation_grid,
+                               const TranslationGrid& z_translation_grid) {
+  const auto [X_voxel_idx, Xn_voxel] = x_translation_grid.GetGridReference(X);
+  const auto X_weights = TranslationGrid::ComputeHermiteWeights(Xn_voxel);
+  return ApplyTranslationGridsWithReferences(X, x_translation_grid, y_translation_grid,
+                                             z_translation_grid, X_weights, X_voxel_idx);
+}

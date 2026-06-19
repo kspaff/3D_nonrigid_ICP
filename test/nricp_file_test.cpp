@@ -28,6 +28,14 @@
 #define NRICP_SMOKE_TRANSFORM_MOVING_XYZ ""
 #endif
 
+#ifndef NRICP_SMOKE_TRANSFORMED
+#define NRICP_SMOKE_TRANSFORMED ""
+#endif
+
+#ifndef NRICP_SMOKE_TRANSFORMED_SINGLE_CHUNK
+#define NRICP_SMOKE_TRANSFORMED_SINGLE_CHUNK ""
+#endif
+
 namespace {
 
 template <typename T>
@@ -311,6 +319,15 @@ TEST(NricpDataSmoke, GeneratedFileCanBeImportedAndApplied) {
   const Scalar max_displacement = (cloud.Xt() - cloud.X()).rowwise().norm().maxCoeff();
   EXPECT_GT(max_displacement, Scalar{0});
   EXPECT_LT(max_displacement, Scalar{10});
+}
+
+TEST(NricpTransformOutputs, ChunkedAndSingleChunkOutputsMatchExactly) {
+  const std::filesystem::path chunked_path{NRICP_SMOKE_TRANSFORMED};
+  const std::filesystem::path single_chunk_path{NRICP_SMOKE_TRANSFORMED_SINGLE_CHUNK};
+  ASSERT_TRUE(std::filesystem::exists(chunked_path));
+  ASSERT_TRUE(std::filesystem::exists(single_chunk_path));
+  EXPECT_EQ(std::filesystem::file_size(chunked_path), std::filesystem::file_size(single_chunk_path));
+  EXPECT_EQ(HashFileFnv1a64(chunked_path), HashFileFnv1a64(single_chunk_path));
 }
 
 TEST(CorrespondenceStats, MedianAndMadIncludeFirstElement) {
