@@ -4,6 +4,36 @@
 #include <fstream>
 #include <iostream>
 
+namespace {
+
+template <typename WeightRow, typename VoxelRow>
+Scalar EvaluateGridAtPoint(
+    const std::vector<std::vector<std::vector<GridVals>>>& grid_vals,
+    const WeightRow& weights,
+    const VoxelRow& voxel_idx) {
+  Scalar value{0};
+
+  for (int corner = 0; corner < 8; ++corner) {
+    const int x_voxel_idx{voxel_idx(0) + (corner & 1)};
+    const int y_voxel_idx{voxel_idx(1) + ((corner >> 1) & 1)};
+    const int z_voxel_idx{voxel_idx(2) + ((corner >> 2) & 1)};
+    const auto& vals = grid_vals[x_voxel_idx][y_voxel_idx][z_voxel_idx];
+
+    value += weights(8 * 0 + corner) * vals.f;
+    value += weights(8 * 1 + corner) * vals.fx;
+    value += weights(8 * 2 + corner) * vals.fy;
+    value += weights(8 * 3 + corner) * vals.fz;
+    value += weights(8 * 4 + corner) * vals.fxy;
+    value += weights(8 * 5 + corner) * vals.fxz;
+    value += weights(8 * 6 + corner) * vals.fyz;
+    value += weights(8 * 7 + corner) * vals.fxyz;
+  }
+
+  return value;
+}
+
+}  // namespace
+
 PtCloud::PtCloud(MatrixX X) : X_{X} {}
 
 void PtCloud::SetNormals(VectorX nx, VectorX ny, VectorX nz) {
@@ -16,7 +46,7 @@ void PtCloud::SetCorrespondenceId(VectorX correspondence_id) {
   correspondence_id_ = correspondence_id;
 }
 
-long PtCloud::NumPts() { return X_.rows(); }
+long PtCloud::NumPts() { return static_cast<long>(X_.rows()); }
 
 void PtCloud::InitializeTranslationGrids(const Scalar& voxel_size, const uint32_t& buffer_voxels,
                                          const std::vector<Scalar>& grid_limits) {
@@ -51,10 +81,12 @@ void PtCloud::InitializeTranslationGrids(const Scalar& voxel_size, const uint32_
     grid_limits_with_buffer[5] = grid_limits[5] + buffer_voxels * voxel_size;
   }
 
-  // ToDo Conversion double to int
-  int x_num_voxels = (grid_limits_with_buffer[3] - grid_limits_with_buffer[0]) / voxel_size;
-  int y_num_voxels = (grid_limits_with_buffer[4] - grid_limits_with_buffer[1]) / voxel_size;
-  int z_num_voxels = (grid_limits_with_buffer[5] - grid_limits_with_buffer[2]) / voxel_size;
+  int x_num_voxels =
+      static_cast<int>((grid_limits_with_buffer[3] - grid_limits_with_buffer[0]) / voxel_size);
+  int y_num_voxels =
+      static_cast<int>((grid_limits_with_buffer[4] - grid_limits_with_buffer[1]) / voxel_size);
+  int z_num_voxels =
+      static_cast<int>((grid_limits_with_buffer[5] - grid_limits_with_buffer[2]) / voxel_size);
   RowVector3 grid_origin{};
   grid_origin << grid_limits_with_buffer[0], grid_limits_with_buffer[1], grid_limits_with_buffer[2];
 
@@ -269,12 +301,23 @@ void PtCloud::InitMatricesForUpdateXt() {
 }
 
 void PtCloud::UpdateXt() {
-  auto tx{x_translation_grid_.p(X_, X_weights_, X_voxel_idx_)};
-  auto ty{y_translation_grid_.p(X_, X_weights_, X_voxel_idx_)};
-  auto tz{z_translation_grid_.p(X_, X_weights_, X_voxel_idx_)};
+  Xt_.resize(X_.rows(), 3);
 
-  Xt_ = MatrixX3(NumPts(), 3);
-  Xt_ << X_.col(0) + tx, X_.col(1) + ty, X_.col(2) + tz;
+  const auto& x_grid_vals = x_translation_grid_.grid_vals();
+  const auto& y_grid_vals = y_translation_grid_.grid_vals();
+  const auto& z_grid_vals = z_translation_grid_.grid_vals();
+
+  for (Eigen::Index point_idx = 0; point_idx < X_.rows(); ++point_idx) {
+    const auto weights = X_weights_.row(point_idx);
+    const auto voxel_idx = X_voxel_idx_.row(point_idx);
+
+    Xt_(point_idx, 0) =
+        X_(point_idx, 0) + EvaluateGridAtPoint(x_grid_vals, weights, voxel_idx);
+    Xt_(point_idx, 1) =
+        X_(point_idx, 1) + EvaluateGridAtPoint(y_grid_vals, weights, voxel_idx);
+    Xt_(point_idx, 2) =
+        X_(point_idx, 2) + EvaluateGridAtPoint(z_grid_vals, weights, voxel_idx);
+  }
 }
 
 const MatrixX& PtCloud::X() { return X_; }
