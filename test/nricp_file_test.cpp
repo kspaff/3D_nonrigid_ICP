@@ -28,6 +28,10 @@
 #define NRICP_SMOKE_TRANSFORM_MOVING_XYZ ""
 #endif
 
+#ifndef NRICP_SMOKE_TRANSFORM_REPEAT
+#define NRICP_SMOKE_TRANSFORM_REPEAT ""
+#endif
+
 #ifndef NRICP_SMOKE_TRANSFORMED
 #define NRICP_SMOKE_TRANSFORMED ""
 #endif
@@ -282,6 +286,19 @@ TEST(NricpDataSmoke, GeneratedFileMatchesGoldenFitOutput) {
 
 TEST(NricpDataSmoke, MovingCloudWithoutNormalsMatchesGoldenFitOutput) {
   ExpectLockedFitMatchesGolden(NRICP_SMOKE_TRANSFORM_MOVING_XYZ);
+}
+
+TEST(NricpDataSmoke, RepeatedFitMatchesPrimaryFitOutput) {
+  const std::filesystem::path primary_path{NRICP_SMOKE_TRANSFORM};
+  const std::filesystem::path repeat_path{NRICP_SMOKE_TRANSFORM_REPEAT};
+  ASSERT_TRUE(std::filesystem::exists(primary_path));
+  ASSERT_TRUE(std::filesystem::exists(repeat_path));
+  EXPECT_EQ(std::filesystem::file_size(primary_path), std::filesystem::file_size(repeat_path));
+
+  if (HashFileFnv1a64(primary_path) != HashFileFnv1a64(repeat_path)) {
+    const auto comparison = NricpFilesNear(repeat_path, primary_path, 1e-4);
+    EXPECT_TRUE(comparison) << comparison.message();
+  }
 }
 
 TEST(NricpAdditionalFits, GeneratedFilesMatchGoldens) {
