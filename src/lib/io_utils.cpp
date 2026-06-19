@@ -129,7 +129,7 @@ void SaveMatrixToFile(const NamedColumnMatrix<MatrixX>& x_updated,
 
     bool is_header = false;
     try {
-      std::stod(cell);
+      (void)std::stod(cell);
     } catch (const std::invalid_argument&) {
       if (first_line) is_header = true;
     }

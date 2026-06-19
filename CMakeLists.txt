@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 project(tricubic_interpolation)
 
 set(CMAKE_CXX_STANDARD 17)
+option(NRICP_ENABLE_CUDA "Build CUDA backend components" OFF)
 
 # Avoid Windows headers defining min/max macros that conflict with std::min/std::max
 if (WIN32)
@@ -68,6 +69,25 @@ target_include_directories(libnonrigid_icp PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src/
 target_include_directories(libnonrigid_icp PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 set_target_properties(libnonrigid_icp PROPERTIES DEBUG_POSTFIX _d)
 
+if(NRICP_ENABLE_CUDA)
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "CUDA architectures for nricp kernels")
+    endif()
+    enable_language(CUDA)
+    find_package(CUDAToolkit 13.0 REQUIRED)
+
+    add_library(libnonrigid_icp_cuda STATIC
+        src/lib/cuda/cuda_runtime.cu
+        src/lib/cuda/cuda_runtime.hpp)
+    target_link_libraries(libnonrigid_icp_cuda PUBLIC CUDA::cudart)
+    target_include_directories(libnonrigid_icp_cuda PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+    target_compile_definitions(libnonrigid_icp_cuda PUBLIC NRICP_ENABLE_CUDA=1)
+    set_target_properties(libnonrigid_icp_cuda PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+        DEBUG_POSTFIX _d)
+endif()
+
 # nonrigid-icp executable
 add_executable(nonrigid-icp src/prog/nonrigid_icp.cpp)
 target_link_libraries(nonrigid-icp libnonrigid_icp ${LIB_CXXOPTS} ${LIB_FMT})
@@ -117,6 +137,13 @@ target_compile_definitions(nricp-file-tests PRIVATE
     NRICP_ADDITIONAL_TRANSFORMS="${NRICP_ADDITIONAL_TRANSFORMS_DEF}"
     NRICP_ADDITIONAL_GOLDENS="${NRICP_ADDITIONAL_GOLDENS_DEF}")
 set_target_properties(nricp-file-tests PROPERTIES DEBUG_POSTFIX _d)
+
+if(NRICP_ENABLE_CUDA)
+    add_executable(cuda-smoke-tests test/cuda_smoke_test.cpp)
+    target_link_libraries(cuda-smoke-tests PRIVATE libnonrigid_icp_cuda gtest_main)
+    target_include_directories(cuda-smoke-tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+    set_target_properties(cuda-smoke-tests PROPERTIES DEBUG_POSTFIX _d)
+endif()
 
 # Copy final executables to bin directory
 file(MAKE_DIRECTORY ${BIN_DIR})
@@ -258,6 +285,13 @@ add_test(
             -s
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(nonrigid-icp-transform.GpuBackendNotImplemented PROPERTIES WILL_FAIL TRUE)
+
+if(NRICP_ENABLE_CUDA)
+    add_test(
+        NAME cuda-smoke-tests.Runtime
+        COMMAND $<TARGET_FILE:cuda-smoke-tests>
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
 
 # Add tests for the shell scripts
 add_test(
