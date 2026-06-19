@@ -135,7 +135,7 @@ void TranslationGrid::Initialize(const RowVector3& grid_origin, const int& x_num
 }
 
 std::tuple<Eigen::MatrixX3i, MatrixX3> TranslationGrid::GetGridReference(
-    const MatrixX3& X) {
+    const MatrixX3& X) const {
   int64_t num_obs{X.rows()};
 
   Eigen::MatrixX3i X_voxel_idx(num_obs, 3);  // returned
@@ -185,7 +185,8 @@ std::tuple<Eigen::MatrixX3i, MatrixX3> TranslationGrid::GetGridReference(
   return {X_voxel_idx, Xn_voxel};
 }
 
-std::tuple<Vector64, Vector64i> TranslationGrid::Get_f(const Eigen::RowVector3i& X_voxel_idx) {
+std::tuple<Vector64, Vector64i> TranslationGrid::Get_f(
+    const Eigen::RowVector3i& X_voxel_idx) const {
   Vector64 f_vals{};      // returned
   Vector64i f_idx_adj{};  // returned
 
@@ -321,6 +322,20 @@ std::vector<Triplet> TranslationGrid::J(const MatrixX3& X) {
   }
 
   return triplets;
+}
+
+void TranslationGrid::AppendJTriplets(const MatrixX3& X, const VectorX& row_weights,
+                                      std::vector<Triplet>& triplets) const {
+  auto [X_voxel_idx, Xn_voxel]{GetGridReference(X)};
+  auto X_weights{ComputeHermiteWeights(Xn_voxel)};
+
+  for (int i = 0; i < X.rows(); i++) {
+    auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
+    const Scalar row_weight{row_weights(i)};
+    for (int j = 0; j < 64; j++) {
+      triplets.emplace_back(i, coeff_cols(j), X_weights(i, j) * row_weight);
+    }
+  }
 }
 
 void TranslationGrid::CopyAllGridValsToVector(VectorX& grid_vals_vector) const {

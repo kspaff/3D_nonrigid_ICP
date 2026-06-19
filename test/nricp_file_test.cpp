@@ -363,3 +363,29 @@ TEST(TranslationGridBasis, CopyAllGridValsToVectorUsesGlobalIndices) {
   EXPECT_EQ(coefficients(x_grid.num_grid_vals() + 1), Scalar{10});
   EXPECT_EQ(coefficients(x_grid.num_grid_vals() + 7), Scalar{16});
 }
+
+TEST(TranslationGridBasis, AppendJTripletsMatchesWeightedReferenceJ) {
+  TranslationGrid grid;
+  RowVector3 origin{};
+  origin << Scalar{0}, Scalar{0}, Scalar{0};
+  grid.Initialize(origin, 1, 1, 1, Scalar{1}, 17);
+
+  MatrixX3 points(2, 3);
+  points << Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f},
+      Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f};
+  VectorX row_weights(2);
+  row_weights << Scalar{2}, Scalar{-0.5f};
+
+  const auto reference_triplets = grid.J(points);
+  std::vector<Triplet> appended_triplets;
+  grid.AppendJTriplets(points, row_weights, appended_triplets);
+
+  ASSERT_EQ(appended_triplets.size(), reference_triplets.size());
+  for (size_t i = 0; i < reference_triplets.size(); ++i) {
+    EXPECT_EQ(appended_triplets[i].row(), reference_triplets[i].row());
+    EXPECT_EQ(appended_triplets[i].col(), reference_triplets[i].col());
+    EXPECT_NEAR(appended_triplets[i].value(),
+                reference_triplets[i].value() * row_weights(reference_triplets[i].row()),
+                1e-6f);
+  }
+}

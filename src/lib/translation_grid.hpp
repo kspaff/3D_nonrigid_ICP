@@ -43,13 +43,15 @@ class TranslationGrid {
   VectorX p(const MatrixX3& X, const MatrixX64& X_weights,
             const Eigen::MatrixX3i& X_voxel_idx);
   std::vector<Triplet> J(const MatrixX3& X);
+  void AppendJTriplets(const MatrixX3& X, const VectorX& row_weights,
+                       std::vector<Triplet>& triplets) const;
   void CopyAllGridValsToVector(VectorX& grid_vals_vector) const;
   void UpdateAllGridValsFromVector(const VectorX& grid_vals_new);
   void UpdateVoxelGridVals(const int& x_voxel_idx, const int& y_voxel_idx, const int& z_voxel_idx,
                            const GridVals grid_vals_new);
   static MatrixX64 ComputeHermiteWeights(const MatrixX3& Xn_voxel);
   static MatrixX64 Compute_X_power(const MatrixX3& Xn_voxel);
-  std::tuple<Eigen::MatrixX3i, MatrixX3> GetGridReference(const MatrixX3& X);
+  std::tuple<Eigen::MatrixX3i, MatrixX3> GetGridReference(const MatrixX3& X) const;
 
   // Getters
   const RowVector3& grid_origin() const;
@@ -63,7 +65,7 @@ class TranslationGrid {
   const std::vector<std::vector<std::vector<GridVals>>>& grid_vals() const;
 
  private:
-  std::tuple<Vector64, Vector64i> Get_f(const Eigen::RowVector3i& X_voxel_idx);
+  std::tuple<Vector64, Vector64i> Get_f(const Eigen::RowVector3i& X_voxel_idx) const;
 
   RowVector3 grid_origin_;
   Scalar voxel_size_;
