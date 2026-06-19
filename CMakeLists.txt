@@ -78,7 +78,9 @@ if(NRICP_ENABLE_CUDA)
 
     add_library(libnonrigid_icp_cuda STATIC
         src/lib/cuda/cuda_runtime.cu
-        src/lib/cuda/cuda_runtime.hpp)
+        src/lib/cuda/cuda_runtime.hpp
+        src/lib/cuda/cuda_transform.cu
+        src/lib/cuda/cuda_transform.hpp)
     target_link_libraries(libnonrigid_icp_cuda PUBLIC CUDA::cudart)
     target_include_directories(libnonrigid_icp_cuda PUBLIC ${CMAKE_CURRENT_LIST_DIR})
     target_compile_definitions(libnonrigid_icp_cuda PUBLIC NRICP_ENABLE_CUDA=1)
@@ -140,7 +142,7 @@ set_target_properties(nricp-file-tests PROPERTIES DEBUG_POSTFIX _d)
 
 if(NRICP_ENABLE_CUDA)
     add_executable(cuda-smoke-tests test/cuda_smoke_test.cpp)
-    target_link_libraries(cuda-smoke-tests PRIVATE libnonrigid_icp_cuda gtest_main)
+    target_link_libraries(cuda-smoke-tests PRIVATE libnonrigid_icp_cuda libnonrigid_icp ${LIB_EIGEN} gtest_main)
     target_include_directories(cuda-smoke-tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
     set_target_properties(cuda-smoke-tests PROPERTIES DEBUG_POSTFIX _d)
 endif()
