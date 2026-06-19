@@ -15,8 +15,11 @@ Scalar WeightForDerivativeChannel(const int channel, const std::vector<Scalar>& 
   return weights[3];
 }
 
-VectorX BuildDirectObservationWeights(const int num_unknowns, const int num_grid_vals_per_component,
-                                      const std::vector<Scalar>& weights) {
+}  // namespace
+
+VectorX BuildZeroObservationWeights(const int num_unknowns,
+                                    const int num_grid_vals_per_component,
+                                    const std::vector<Scalar>& weights) {
   VectorX direct_obs_weights(num_unknowns);
   for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
     const int component_local_idx = unknown_idx % num_grid_vals_per_component;
@@ -25,8 +28,6 @@ VectorX BuildDirectObservationWeights(const int num_unknowns, const int num_grid
   }
   return direct_obs_weights;
 }
-
-}  // namespace
 
 Optimization::Optimization() = default;
 
@@ -54,7 +55,7 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
 
   const int num_grid_vals_per_component{correspondences.pc_mov().x_translation_grid().num_grid_vals()};
   const VectorX direct_obs_weights{
-      BuildDirectObservationWeights(num_unknowns, num_grid_vals_per_component, weights_zero_observations)};
+      BuildZeroObservationWeights(num_unknowns, num_grid_vals_per_component, weights_zero_observations)};
   SparseMatrix normal_matrix{J.transpose() * J};
   for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
     normal_matrix.coeffRef(unknown_idx, unknown_idx) += direct_obs_weights(unknown_idx);

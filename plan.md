@@ -1730,6 +1730,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Deterministic repeat fitting milestone committed locally as `368aaed0e4795e5ed49937817516d68c6dfffec2` (`Cover deterministic repeat fitting`).
 - 2026-06-19: Added Section 19 validation coverage for fixed-profile correspondence sampling limits. `RandInt()` now accepts a one-point inclusive range, which lets the fixed `35000` requested correspondences select all available points for clouds with one point instead of throwing. Focused tests now verify oversized requests select all available fixed points in sorted order, partial sampling is deterministic and sorted, and zero requested correspondences is rejected. Verification: `Release|x64` build succeeds with 0 warnings and 0 errors; the selected locked suite passes 15/15 in 71.41 s.
 - 2026-06-19: Correspondence sampling limit validation committed locally as `45d9718448c61925612e1dfe58df1a9718ee443d` (`Cover correspondence sampling limits`).
+- 2026-06-19: Added Section 19 validation coverage for the equal-weight regularization invariant. The zero-observation diagonal builder is now a small testable library helper used by the optimizer; focused tests verify that four `0.01` weights produce a uniform `0.01 I` diagonal, derivative classes map to the four weight slots, and malformed weight vectors are rejected. The CPU solve path is otherwise unchanged. Verification: `Release|x64` build succeeds with 0 warnings and 0 errors; the selected locked suite passes 15/15 in 75.44 s.
 
 ## Abandoned
 

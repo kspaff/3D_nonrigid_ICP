@@ -16,3 +16,7 @@ class Optimization {
   static OptimizationResults Solve(Correspondences& correspondences,
                                    const std::vector<Scalar>& weights_zero_observations);
 };
+
+VectorX BuildZeroObservationWeights(const int num_unknowns,
+                                    const int num_grid_vals_per_component,
+                                    const std::vector<Scalar>& weights);

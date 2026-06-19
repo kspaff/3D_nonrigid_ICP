@@ -14,6 +14,7 @@
 
 #include "src/lib/io_utils.hpp"
 #include "src/lib/correspondences.hpp"
+#include "src/lib/optimization.hpp"
 #include "src/lib/pt_cloud.hpp"
 #include "src/lib/scalar_types.hpp"
 
@@ -403,6 +404,33 @@ TEST(CorrespondenceSampling, PartialSelectionIsDeterministicAndSorted) {
 
 TEST(CorrespondenceSampling, RejectsZeroRequestedCorrespondences) {
   EXPECT_THROW(RandInt(0, 2, 0), std::invalid_argument);
+}
+
+TEST(OptimizationRegularization, EqualWeightsBuildUniformRidgeDiagonal) {
+  const auto regularization =
+      BuildZeroObservationWeights(48, 16, {Scalar{0.01f}, Scalar{0.01f}, Scalar{0.01f},
+                                           Scalar{0.01f}});
+
+  ASSERT_EQ(regularization.size(), 48);
+  for (Eigen::Index i = 0; i < regularization.size(); ++i) {
+    EXPECT_EQ(regularization(i), Scalar{0.01f});
+  }
+}
+
+TEST(OptimizationRegularization, MapsDerivativeClassesToWeightSlots) {
+  const auto regularization =
+      BuildZeroObservationWeights(24, 8, {Scalar{1}, Scalar{2}, Scalar{3}, Scalar{4}});
+  const Scalar expected_component_weights[8]{Scalar{1}, Scalar{2}, Scalar{2}, Scalar{2},
+                                             Scalar{3}, Scalar{3}, Scalar{3}, Scalar{4}};
+
+  ASSERT_EQ(regularization.size(), 24);
+  for (Eigen::Index i = 0; i < regularization.size(); ++i) {
+    EXPECT_EQ(regularization(i), expected_component_weights[i % 8]);
+  }
+}
+
+TEST(OptimizationRegularization, RejectsNonFourWeightVector) {
+  EXPECT_THROW(BuildZeroObservationWeights(8, 8, {Scalar{0.01f}}), std::invalid_argument);
 }
 
 TEST(CorrespondenceMatching, KnnSearchFindsExactNearestNeighbors) {
