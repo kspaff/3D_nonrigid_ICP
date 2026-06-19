@@ -56,7 +56,7 @@ class PtCloud {
   TranslationGrid z_translation_grid_;
   Eigen::MatrixX3i X_voxel_idx_;
   MatrixX3 Xn_voxel_;
-  MatrixX64 X_power_;
+  MatrixX64 X_weights_;
 };
 
 struct HeaderInfo {

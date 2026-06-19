@@ -40,7 +40,7 @@ class TranslationGrid {
   VectorX p(const MatrixX3& X);
   // This version of p() can be used to save computation time if >1 translation grid is used, e.g.
   // for x, y, z
-  VectorX p(const MatrixX3& X, const MatrixX64& X_power,
+  VectorX p(const MatrixX3& X, const MatrixX64& X_weights,
             const Eigen::MatrixX3i& X_voxel_idx);
   std::vector<Triplet> J(const MatrixX3& X);
   void UpdateAllGridValsFromVector(const VectorX& grid_vals_new);

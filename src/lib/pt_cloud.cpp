@@ -265,13 +265,13 @@ void PtCloud::InitMatricesForUpdateXt() {
   auto [X_voxel_idx, Xn_voxel]{x_translation_grid_.GetGridReference(X_)};
   X_voxel_idx_ = X_voxel_idx;
   Xn_voxel_ = Xn_voxel;
-  X_power_ = TranslationGrid::Compute_X_power(Xn_voxel);
+  X_weights_ = TranslationGrid::ComputeHermiteWeights(Xn_voxel);
 }
 
 void PtCloud::UpdateXt() {
-  auto tx{x_translation_grid_.p(X_, X_power_, X_voxel_idx_)};
-  auto ty{y_translation_grid_.p(X_, X_power_, X_voxel_idx_)};
-  auto tz{z_translation_grid_.p(X_, X_power_, X_voxel_idx_)};
+  auto tx{x_translation_grid_.p(X_, X_weights_, X_voxel_idx_)};
+  auto ty{y_translation_grid_.p(X_, X_weights_, X_voxel_idx_)};
+  auto tz{z_translation_grid_.p(X_, X_weights_, X_voxel_idx_)};
 
   Xt_ = MatrixX3(NumPts(), 3);
   Xt_ << X_.col(0) + tx, X_.col(1) + ty, X_.col(2) + tz;

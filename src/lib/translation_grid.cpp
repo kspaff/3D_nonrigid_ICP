@@ -228,18 +228,18 @@ VectorX TranslationGrid::p(const MatrixX3& X) {
   VectorX p(num_points);
 
   auto [X_voxel_idx, Xn_voxel]{GetGridReference(X)};
-  auto X_power{Compute_X_power(Xn_voxel)};
+  auto X_weights{ComputeHermiteWeights(Xn_voxel)};
 
   for (int i = 0; i < num_points; i++) {
     auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
-    p(i) = (X_power.row(i) * inv_A_ * f_vals)(0, 0);
+    p(i) = X_weights.row(i).dot(f_vals);
   }
 
   return p;
 }
 
 VectorX TranslationGrid::p(const MatrixX3& X,
-                           const MatrixX64& X_power,
+                           const MatrixX64& X_weights,
                            const Eigen::MatrixX3i& X_voxel_idx) {
   int64_t num_points{X.rows()};
 
@@ -247,7 +247,7 @@ VectorX TranslationGrid::p(const MatrixX3& X,
 
   for (int i = 0; i < num_points; i++) {
     auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
-    p(i) = (X_power.row(i) * inv_A_ * f_vals)(0, 0);
+    p(i) = X_weights.row(i).dot(f_vals);
   }
 
   return p;
@@ -302,7 +302,7 @@ MatrixX64 TranslationGrid::Compute_X_power(
 
 std::vector<Triplet> TranslationGrid::J(const MatrixX3& X) {
   auto [X_voxel_idx, Xn_voxel]{GetGridReference(X)};
-  auto X_power{Compute_X_power(Xn_voxel)};
+  auto X_weights{ComputeHermiteWeights(Xn_voxel)};
 
   std::vector<Triplet> triplets;
   triplets.reserve(X.rows() * 64);
@@ -311,7 +311,7 @@ std::vector<Triplet> TranslationGrid::J(const MatrixX3& X) {
   Vector64i coeff_rows{};
 
   for (int i = 0; i < X.rows(); i++) {
-    coeff_vals = (X_power.row(i) * inv_A_).transpose();
+    coeff_vals = X_weights.row(i).transpose();
     coeff_rows.setConstant(i);
     auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
     for (int j = 0; j < 64; j++) {

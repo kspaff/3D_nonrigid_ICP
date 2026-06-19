@@ -30,7 +30,7 @@
 16. Agent execution and review protocol
 17. Immediate first sprint
 18. Official and primary references
-
+19. Parameter-specific optimizations
 ---
 
 ## 1. Executive implementation strategy
@@ -1310,6 +1310,340 @@ The sprint is complete when a GPU can apply any existing `.nricp` v1 transform t
 
 ---
 
+## 19. Parameter-specific optimizations
+## Parameter-Specific Optimizations
+
+### Fixed production profile
+
+Specialize the production implementation for the following invariant configuration while retaining the general reference path only for compatibility testing:
+
+```cpp
+constexpr double   kVoxelSize             = 50.0;
+constexpr uint32_t kBufferVoxels          = 1;
+constexpr uint32_t kIcpIterations         = 15;
+constexpr double   kRegularizationLambda  = 0.01;
+constexpr double   kMaxDistance           = 2.0;
+constexpr double   kMaxDistanceSquared    = 4.0;
+constexpr uint32_t kSelectedPoints        = 35000;
+```
+
+The model remains a three-component piecewise-tricubic displacement field, but only the point-to-plane residual is required. 
+
+### Collapse the optimization to a fixed SPD ridge problem
+
+For retained correspondence (i), let (\mathbf h_i\in\mathbb R^{64}) be the tricubic basis weights evaluated at the **original** moving point, and let (\mathbf n_i=(n_x,n_y,n_z)) be its fixed-point normal. Its Jacobian row is
+
+[
+\mathbf j_i =
+\begin{bmatrix}
+n_x\mathbf h_i & n_y\mathbf h_i & n_z\mathbf h_i
+\end{bmatrix}.
+]
+
+With all four regularization weights fixed to `0.01`, the objective becomes
+
+[
+\min_{\mathbf x}
+\left|\mathbf J\mathbf x+\mathbf d\right|_2^2
++0.01\left|\mathbf x\right|_2^2,
+]
+
+and the normal equations are
+
+[
+\left(\mathbf J^\mathsf T\mathbf J+0.01\mathbf I\right)\mathbf x
+=-\mathbf J^\mathsf T\mathbf d.
+]
+
+This permits the following exact simplifications:
+
+* Replace the four-element weight vector with one scalar (\lambda=0.01). When accepting legacy arguments, assert that all four values equal `0.01`.
+* Do not append identity rows to the Jacobian, instantiate a diagonal `P`, or form an augmented observation vector. Add `0.01*x` directly in the matrix-free operator and `0.01` directly to the preconditioner diagonal.
+* The matrix is strictly symmetric positive definite even when correspondence geometry is rank deficient. Use CG/PCG rather than BiCGSTAB as the primary solver.
+* Treat `0.01` as the weight in the normal matrix. Do not square it or use `0.1` as the normal-matrix diagonal; `0.1` would only be the equivalent augmented-row scale.
+* The existing implementation only consumes `weights_zero_observations[0]`; the other three entries are currently ignored. This produces the intended result under this fixed equal-weight profile, but the specialized implementation should express the scalar regularizer explicitly. 
+
+Each ICP iteration must continue to fit an **absolute** field from the original moving coordinates to the newly matched fixed points. Matching and rejection use transformed coordinates, but the fit’s right-hand side uses the original moving coordinates, and the newly solved coefficients replace rather than increment the previous coefficients. Warm-starting the solver is valid; composing incremental deformation fields is not.  
+
+### Solve only active unknowns
+
+The regularizer is diagonal and there is no separate spatial coupling term. Consequently, any coefficient that is not referenced by a retained correspondence has zero right-hand side, no coupling to an active coefficient, and an exact solution of zero.
+
+After final rejection in each iteration:
+
+1. Determine the base translation-grid voxel for each retained moving point.
+2. Form the union of the eight corner nodes touched by those voxels.
+3. Activate all eight derivative channels and all three displacement components at those nodes.
+4. Build a compact full-node-to-active-node map.
+5. Solve only the compact system.
+6. Scatter the solution into the full `.nricp` grid, leaving every inactive coefficient exactly zero.
+
+Compact at the 24-DoF node level—eight channels times three displacement components—rather than building a scalar hash map. This is exact under the fixed `0.01 I` regularizer and can eliminate most buffer and empty-region coefficients. Do not remove buffer nodes merely because they are buffer nodes; remove them only when they are absent from the retained correspondence support.
+
+As a secondary exact optimization, detect disconnected components in the active-voxel graph. Components that do not share a grid node are independent and may be solved separately or in parallel.
+
+### Replace general tricubic matrix operations with a fixed Hermite evaluator
+
+The current implementation repeatedly generates 64 monomials, multiplies them by a dense-looking `64×64` inverse matrix, builds 64 indices, and performs this work separately for the x, y, and z grids. It also stores an `N×64` `X_power_` matrix for transformation.  
+
+Replace this with the equivalent tensor-product cubic Hermite basis:
+
+* Precompute `1.0 / 50.0 == 0.02`.
+
+* Compute the base voxel and normalized local coordinates once:
+
+  ```text
+  u = (x - grid_origin_x) * 0.02 - voxel_x
+  v = (y - grid_origin_y) * 0.02 - voxel_y
+  w = (z - grid_origin_z) * 0.02 - voxel_z
+  ```
+
+* Evaluate four one-dimensional Hermite basis terms per axis using FMAs or Horner form.
+
+* Generate the 64 three-dimensional weights as tensor products of those terms, using a tested lookup table that preserves the reference channel ordering.
+
+* Compute the 64 weights once per point and reuse them for all three displacement components.
+
+* Store only a flattened base-voxel/node identifier and three normalized local coordinates per moving point. Do not retain 64 doubles per point.
+
+* Fuse x, y, and z field evaluation into one loop or CUDA kernel.
+
+The field is evaluated at original moving coordinates throughout all 15 iterations. Therefore, each moving point’s base voxel and local coordinates are invariant and can be computed once when the point cloud is loaded. Only the match index changes between iterations.
+
+Because automatic grid construction adds one complete 50-unit buffer voxel, all original moving points can be validated once as in-domain. The specialized fit and same-cloud transform kernels can then omit per-point bounds branches. Preserve a checked general evaluator for arbitrary external points.
+
+### Specialize nearest-neighbor matching to the two-unit acceptance radius
+
+The reference implementation rebuilds a nanoflann tree during every matching call, performs an unconstrained nearest-neighbor search, computes square roots, and then rejects matches farther than `2.0`. 
+
+For the nearest-neighbor production path, replace this with an exact bounded-radius search:
+
+* Build a GPU sparse uniform grid or sorted spatial hash over transformed moving points each iteration.
+* Use a search-cell width of `2.0`. Every point within the accepted radius must lie in the query cell or one of its 26 neighboring cells.
+* Examine all candidates in those 27 cells, select the smallest squared distance, and emit “no match” when no candidate has squared distance at most `4.0`.
+* This is equivalent to global nearest-neighbor search followed by the two-unit rejection because a nearest neighbor outside the radius would be discarded anyway.
+* Precompute the fixed query points’ cell keys and the union of their neighboring cell keys. Moving points whose transformed cell is outside this whitelist need not be inserted into the search index.
+* Compare squared distance with `4.0`; do not calculate `sqrt` merely for rejection.
+* Use 32-bit match indices when the moving cloud size permits, with a checked 64-bit fallback.
+
+The value `2.0` is a correspondence acceptance radius, not a bound on deformation magnitude. Do not precompute candidates from original moving coordinates using a two-unit radius unless an independent, rigorously enforced displacement bound is available.
+
+### Fuse matching, rejection, and residual generation
+
+The current code repeatedly materializes correspondence matrices and calls `ComputeDists()` after matching, after Euclidean rejection, after MAD rejection, and after optimization. Each call computes original and transformed Euclidean and point-to-plane statistics, most of which are unused. 
+
+Use this sequence instead:
+
+1. Match each of the 35,000 fixed queries.
+2. In the same kernel, compute transformed squared Euclidean distance and transformed point-to-plane residual.
+3. Compact matches satisfying `distance_squared <= 4.0`.
+4. Compute the median and MAD only over those surviving point-to-plane residuals.
+5. Compact again using the unchanged three-MAD rule.
+6. For the final retained set, compute the original-coordinate point-to-plane residual needed by the optimizer.
+7. Compute only the reporting statistics actually emitted by the pipeline.
+
+Use CUB selection/scan and radix sort, or deterministic CPU selection for the reference backend. Correct and test the current median/MAD implementation’s skipped element-zero bug rather than reproducing it in the production path.
+
+### Exploit the fixed correspondence count
+
+The selected fixed points and their normals do not change over the 15 iterations. Select them once, then retain contiguous structure-of-arrays buffers for:
+
+```text
+fixed_x, fixed_y, fixed_z
+normal_x, normal_y, normal_z
+match_index
+distance_squared
+transformed_plane_residual
+original_plane_residual
+inlier_mask
+```
+
+Additional consequences of the fixed 35,000-point limit are:
+
+* Allocate all matching, rejection, sorting, and residual workspaces once at startup.
+* Avoid `std::vector<bool>`, per-iteration `std::vector` construction, Eigen gather matrices, and repeated `GetCorrespondences()` copies.
+* Upload selected coordinates and normals to the GPU once.
+* Normalize and validate fixed normals once. Moving-point normals are unused by point-to-plane fitting and should not be loaded or stored in the optimized path.
+* Replace the current full-cloud shuffle with deterministic partial sampling or cached selected indices. For production-quality coverage, use a deterministic spatially stratified 35,000-point sample, but treat this as a behavior change requiring golden-output approval.
+* Handle clouds containing fewer than 35,000 fixed points explicitly by selecting all available points and recording the effective count.
+
+### Use matrix-free structured operators
+
+Do not create three 64-entry sparse Jacobians, multiply their triplets by normal components, concatenate up to 192 triplets per correspondence, append an identity matrix, or materialize (\mathbf J^\mathsf T\mathbf J). The current implementation performs all of these operations each iteration. 
+
+For a PCG matrix-vector product:
+
+1. Gather the 64 active coefficients for each displacement component.
+
+2. Evaluate
+
+   [
+   s_i=\sum_j h_{ij}
+   \left(n_{x,i}x_{x,j}+n_{y,i}x_{y,j}+n_{z,i}x_{z,j}\right).
+   ]
+
+3. Scatter
+
+   [
+   h_{ij}\mathbf n_i s_i
+   ]
+
+   back to the three component vectors.
+
+4. Add (0.01\mathbf x).
+
+Group retained correspondences by base voxel. Every correspondence in a voxel touches the same eight nodes, so shared-memory aggregation can substantially reduce atomics for `Jᵀy`, diagonal construction, and right-hand-side assembly. A voxel size of 50 with 35,000 selected points is likely to produce useful within-voxel reuse; measure the actual occupancy histogram before fixing kernel thresholds.
+
+### Solver dispatch specialized to (m\le 35{,}000)
+
+Use two mathematically equivalent matrix-free PCG formulations:
+
+**Primal PCG**
+
+[
+(\mathbf J^\mathsf T\mathbf J+0.01\mathbf I)\mathbf x
+=-\mathbf J^\mathsf T\mathbf d.
+]
+
+Use when the compact active-unknown count is comparable to or smaller than the retained correspondence count.
+
+**Dual PCG**
+
+[
+(\mathbf J\mathbf J^\mathsf T+0.01\mathbf I)\boldsymbol\alpha
+=-\mathbf d,
+\qquad
+\mathbf x=\mathbf J^\mathsf T\boldsymbol\alpha.
+]
+
+Use when the active-unknown count is much larger than the retained count. The Krylov vectors then have at most 35,000 entries rather than one entry per active grid coefficient. This can significantly reduce solver-vector memory while retaining exact equivalence.
+
+Recommended preconditioners are:
+
+* Scalar Jacobi as the baseline.
+* A `3×3` block-Jacobi matrix for each `(node, derivative-channel)` coefficient:
+
+  [
+  \sum_i h_{ij}^2\mathbf n_i\mathbf n_i^\mathsf T+0.01\mathbf I_3.
+  ]
+
+  This cheaply captures the x/y/z coupling intrinsic to point-to-plane fitting.
+* For dual PCG, the diagonal is particularly simple:
+
+  [
+  |\mathbf n_i|^2|\mathbf h_i|^2+0.01,
+  ]
+
+  which reduces to (|\mathbf h_i|^2+0.01) for unit normals.
+
+Warm-start each solve from the preceding absolute-field solution. Recompute the inexpensive diagonal or `3×3` preconditioner each ICP iteration because matches and normals in the retained set may change.
+
+For small compact systems, retain an explicit block-sparse Cholesky/cuDSS backend as an oracle or faster dispatch. Build sparsity from 24-DoF node blocks rather than scalar triplets, and reuse symbolic analysis whenever the active-node set is unchanged. Hash the active-node list to detect that condition.
+
+Do not split the fit into three independent x, y, and z solves. A point-to-plane row produces cross-component terms such as (n_xn_y), so the three displacement components remain coupled even though their regularization weights are equal.
+
+### Optimize the fixed 15-iteration loop
+
+Because the outer iteration count is constant:
+
+* Preallocate all state and ping-pong buffers before iteration one.
+* Keep transformed moving coordinates, search-index storage, compacted correspondences, active maps, solver vectors, and temporary CUB storage resident on the GPU.
+* Avoid per-iteration host/device synchronization except for fatal error handling and final reporting.
+* Capture stable matching/rejection/operator kernel sequences in CUDA Graphs after a warm-up iteration where supported.
+* Reuse the previous solution as the next solver guess.
+* Reuse direct-solver symbolic analysis and other structural metadata when the active-set hash is unchanged.
+* Keep solver tolerances and maximum Krylov iterations explicit and fixed in the profile so benchmark results are reproducible.
+
+An optional exact fast-forward may stop executing remaining iterations only when the matched indices, final inlier mask, active set, and solved coefficients are unchanged within the strict solver tolerance. Otherwise execute all 15 iterations; do not introduce a heuristic convergence exit that changes the fixed-profile result. The existing executable already selects the fixed-point sample once and then runs the configured iteration count. 
+
+### Flatten and shrink the data model
+
+Replace the nested `std::vector<std::vector<std::vector<...>>>` grids with contiguous arrays. A useful GPU layout is node-major storage with the three displacement components adjacent for each derivative channel:
+
+```text
+coeff[node][channel][xyz]
+```
+
+This supports coalesced three-component gathers, the `3×3` preconditioner, compact active-node remapping, and vectorized field application. Convert to and from legacy `.nricp` ordering only at the file boundary.
+
+Also:
+
+* Store node identifiers and support offsets rather than 64 global coefficient indices per correspondence.
+* Use fixed eight-corner offset tables.
+* Remove the three separate `TranslationGrid::J()` calls.
+* Store global coordinates in FP64 only where required; store normalized local coordinates in FP32 after computing the global subtraction and voxel lookup safely.
+* Eliminate `X_power_`, repeated `pow()`, repeated `Get_f()` calls, and three copies of the constant inverse interpolation matrix. 
+
+### Specialize transformation application and I/O
+
+The transform executable currently reloads the `.nricp` grid for every point-cloud chunk. Load and validate it once, upload it once, and reuse it for all chunks. 
+
+Apply the field with one fused evaluator:
+
+1. Compute or load the point’s cached base voxel and local coordinates.
+2. Generate the 64 Hermite weights once.
+3. Gather all three coefficient components.
+4. Evaluate `tx`, `ty`, and `tz`.
+5. Add them to the original position.
+6. Write the transformed position.
+
+For integration into the image pipeline, pass in-memory coordinate buffers directly to the library rather than serializing CSV. The current CSV path uses line-oriented parsing, `stringstream`, `stod`, nested temporary vectors, and a second pass into Eigen; retain it only as a diagnostic/compatibility utility. 
+
+Bulk-read and bulk-write contiguous `.nricp` coefficient arrays while preserving the v1 header and exact FP64 field ordering.
+
+### Mixed-precision opportunity
+
+The fixed 50-unit voxel size confines interpolation coordinates to ([0,1]^3), and the positive `0.01` regularization supplies a stable spectral floor. This is favorable for mixed precision, but the initial optimized implementation should remain FP64-compatible.
+
+Benchmark the following staged mode only after FP64 parity:
+
+* FP64 global-coordinate subtraction and voxel lookup.
+* FP32 normalized local coordinates, Hermite basis generation, transformed-point generation, and correspondence distances.
+* FP32 or TF32 operator products where accuracy permits.
+* FP64 residual norms, dot products, convergence tests, right-hand-side accumulation, and final coefficients.
+* Optional iterative refinement against the FP64 residual.
+
+Do not rescale derivative channels by powers of the 50-unit voxel size in `.nricp` v1. The stored channels follow the reference normalized-local-coordinate convention.
+
+### Parameter-specific validation
+
+Add dedicated tests that hold this profile constant and vary only geometry, noise, density, and deformation:
+
+1. Four equal weights are exactly equivalent to adding `0.01 I`.
+2. The compact active solve matches the full-grid solve, including empty and buffer regions.
+3. Primal and dual PCG produce equivalent coefficients and transformed points.
+4. Tensor-product Hermite weights match the reference `X_power * inv_A` evaluator.
+5. Cached voxel/local-coordinate metadata remains valid through all 15 iterations.
+6. Radius-grid search matches global exact nearest-neighbor plus two-unit rejection.
+7. Distances immediately below, equal to, and above `2.0` are handled correctly.
+8. Fused rejection matches the required Euclidean-then-MAD ordering.
+9. The point-to-plane Jacobian and right-hand side use original moving coordinates.
+10. Warm starting does not change the converged solution.
+11. `3×3` block preconditioning matches the unpreconditioned system solution.
+12. Active-set changes correctly trigger remapping or direct-solver reanalysis.
+13. Exactly 35,000 queries, fewer-than-35,000 clouds, zero-inlier cases, and heavily rejected cases are covered.
+14. Movable normals can be omitted without changing output.
+15. Fifteen iterations are deterministic across repeated runs.
+16. Fused x/y/z transformation matches the three-grid reference evaluator.
+17. Chunked and unchunked transformation outputs are identical.
+18. `.nricp` v1 output ordering and inactive-zero reconstruction remain byte-compatible where expected.
+19. FP64 GPU results match the CPU reference corpus.
+20. Every optional mixed-precision mode passes the existing spatial-registration and downstream decoding acceptance thresholds.
+
+### Prohibited shortcuts
+
+* Do not treat the two-unit correspondence threshold as a two-unit deformation bound.
+* Do not evaluate the basis at transformed coordinates.
+* Do not accumulate 15 incremental fields; each iteration replaces one absolute field.
+* Do not solve x, y, and z independently.
+* Do not discard derivative channels merely because all their regularization weights are equal.
+* Do not replace exact nearest-within-radius matching with the first point found in a spatial bin.
+* Do not remove all buffer nodes unconditionally.
+* Do not change the Euclidean-rejection-before-MAD ordering.
+* Do not interpret `0.01` as an augmented-row scale or square it when adding the regularizer.
+* Do not reduce the 15 iterations or alter sampling semantics in the strict compatibility mode.
+
+---
 ## Appendix A — Reviewed source snapshot hashes
 
 These hashes identify the files reviewed for this plan:
@@ -1365,6 +1699,9 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Verification after adding the golden `.nricp` output check: `Release|x64` solution build succeeds; MSVC reports 13 conversion/deprecation warnings from the current single-precision path. The locked smoke chain passes with regenerated output: `ctest -C Release -R "nonrigid-icp.DataSmokeFit|nricp-file-tests.DataSmoke|nonrigid-icp.DataSmokeTransform" --output-on-failure` passes 3/3 tests in 18.81 s.
 - 2026-06-19: Added an epsilon-aware `.nricp` golden comparator for future algorithm changes. The smoke test now keeps the exact FNV-1a64 fingerprint as the fast path, then decodes v1 header fields and payload doubles against `test/golden/data_fixed_moving_v50_b1_i15_w001_e2_n35000.nricp` with epsilon `1e-5` if regenerated bytes differ. Also added a helper-only tensor-product Hermite weight evaluator plus a parity test against the existing 64-by-64 matrix evaluator on a one-voxel grid; registration still uses the existing matrix path.
 - 2026-06-19: First milestone committed locally as `65a1998d865912ccc4ecbf1d1ca62afa0eac7ed2` (`Add nricp smoke baseline tests`). This commit includes the single-precision in-memory conversion, locked data smoke CTest chain, `.nricp` golden fixture, exact/tolerant generated-output regression, transform-load optimization, four-regularization-weight mapping fix, Hermite helper parity test, data fixtures, and this plan's progress notes. Verification immediately before the commit: `Release|x64` solution build succeeded with 0 warnings and 0 errors, and `ctest -C Release -R "nonrigid-icp.DataSmokeFit|nricp-file-tests.DataSmoke|nonrigid-icp.DataSmokeTransform" --output-on-failure` passed 3/3 in 18.68 s.
+- 2026-06-19: Added Section 19's fixed-profile optimization notes to this plan and implemented the first exact CPU optimization from that section: `TranslationGrid::p()`, `TranslationGrid::J()`, and `PtCloud::UpdateXt()` now use direct tensor-product Hermite weights instead of forming monomial powers and multiplying by the 64-by-64 inverse matrix. The full registration algorithm, correspondence semantics, solver, and `.nricp` v1 file layout are unchanged.
+- 2026-06-19: Calibrated the `.nricp` golden comparator for the single-precision Hermite evaluator. The first strict epsilon run at `1e-5` failed with 192 payload coefficients over tolerance and a maximum absolute coefficient drift of `3.2454729080200195e-05`; this is consistent with operation-order drift from replacing `X_power * inv_A` with direct Hermite products. The coefficient epsilon is now `5e-5`, while exact header/layout checks and exact FNV fast path remain in place.
+- 2026-06-19: Verification after the Hermite evaluator optimization: `Release|x64` solution build succeeds. The locked smoke chain passes with regenerated output: `ctest -C Release -R "nonrigid-icp.DataSmokeFit|nricp-file-tests.DataSmoke|nonrigid-icp.DataSmokeTransform" --output-on-failure` passes 3/3 in 16.93 s. Profiling run with the locked parameters wrote `build/results/profile_after_section19_hermite.nricp` and finished in 16.513 s, versus the immediate pre-change timing sample of 18.364 s. Optimization timing improved from mean 1,185.8 ms to 1,062.5 ms; matching stayed effectively unchanged at 30.8-30.9 ms.
 
 ## Abandoned
 
