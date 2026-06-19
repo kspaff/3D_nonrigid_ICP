@@ -6,12 +6,23 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 #include "src/lib/io_utils.hpp"
 #include "src/lib/correspondences.hpp"
 #include "src/lib/pt_cloud.hpp"
 #include "src/lib/scalar_types.hpp"
+
+#ifndef NRICP_ADDITIONAL_TRANSFORMS
+#define NRICP_ADDITIONAL_TRANSFORMS ""
+#endif
+
+#ifndef NRICP_ADDITIONAL_GOLDENS
+#define NRICP_ADDITIONAL_GOLDENS ""
+#endif
 
 namespace {
 
@@ -66,6 +77,18 @@ std::uint64_t HashFileFnv1a64(const std::filesystem::path& path) {
     }
   }
   return hash;
+}
+
+std::vector<std::filesystem::path> SplitPathList(const std::string& paths) {
+  std::vector<std::filesystem::path> result;
+  std::stringstream stream{paths};
+  std::string item;
+  while (std::getline(stream, item, '|')) {
+    if (!item.empty()) {
+      result.emplace_back(item);
+    }
+  }
+  return result;
 }
 
 testing::AssertionResult NricpFilesNear(const std::filesystem::path& actual_path,
@@ -239,6 +262,25 @@ TEST(NricpDataSmoke, GeneratedFileMatchesGoldenFitOutput) {
   if (HashFileFnv1a64(transform_path) != kExpectedFnv1a64) {
     const auto comparison = NricpFilesNear(transform_path, golden_path, kPayloadEpsilon);
     EXPECT_TRUE(comparison) << comparison.message();
+  }
+}
+
+TEST(NricpAdditionalFits, GeneratedFilesMatchGoldens) {
+  const auto transform_paths = SplitPathList(NRICP_ADDITIONAL_TRANSFORMS);
+  const auto golden_paths = SplitPathList(NRICP_ADDITIONAL_GOLDENS);
+  ASSERT_FALSE(transform_paths.empty());
+  ASSERT_EQ(transform_paths.size(), golden_paths.size());
+
+  constexpr double kPayloadEpsilon = 1e-4;
+  for (size_t i = 0; i < transform_paths.size(); ++i) {
+    SCOPED_TRACE("actual=" + transform_paths[i].string() + " golden=" + golden_paths[i].string());
+    ASSERT_TRUE(std::filesystem::exists(transform_paths[i]));
+    ASSERT_TRUE(std::filesystem::exists(golden_paths[i]));
+
+    if (HashFileFnv1a64(transform_paths[i]) != HashFileFnv1a64(golden_paths[i])) {
+      const auto comparison = NricpFilesNear(transform_paths[i], golden_paths[i], kPayloadEpsilon);
+      EXPECT_TRUE(comparison) << comparison.message();
+    }
   }
 }
 

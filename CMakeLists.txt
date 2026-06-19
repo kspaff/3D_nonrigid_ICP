@@ -83,7 +83,21 @@ set_target_properties(nonrigid-icp-transform PROPERTIES DEBUG_POSTFIX _d)
 # Unit and smoke tests
 set(NRICP_DATA_SMOKE_TRANSFORM "${CMAKE_BINARY_DIR}/results/data_fixed_moving_v50_b1_i15_w001_e2_n35000_test.nricp")
 set(NRICP_DATA_SMOKE_TRANSFORMED "${CMAKE_BINARY_DIR}/results/moving_pc_transformed_v50_b1_i15_w001_e2_n35000_test.csv")
+set(NRICP_ADDITIONAL_TEST_IDS 2 3 4 5 6)
+set(NRICP_ADDITIONAL_TRANSFORMS)
+set(NRICP_ADDITIONAL_GOLDENS)
+set(NRICP_ADDITIONAL_FIT_TESTS)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/results")
+
+foreach(additional_id IN LISTS NRICP_ADDITIONAL_TEST_IDS)
+    set(additional_transform "${CMAKE_BINARY_DIR}/results/additional_fixed_moving${additional_id}_v50_b1_i15_w001_e2_n35000_test.nricp")
+    list(APPEND NRICP_ADDITIONAL_TRANSFORMS "${additional_transform}")
+    list(APPEND NRICP_ADDITIONAL_GOLDENS "${CMAKE_SOURCE_DIR}/additional_tests/gold${additional_id}.nricp")
+    list(APPEND NRICP_ADDITIONAL_FIT_TESTS "nonrigid-icp.AdditionalFit${additional_id}")
+endforeach()
+
+string(REPLACE ";" "|" NRICP_ADDITIONAL_TRANSFORMS_DEF "${NRICP_ADDITIONAL_TRANSFORMS}")
+string(REPLACE ";" "|" NRICP_ADDITIONAL_GOLDENS_DEF "${NRICP_ADDITIONAL_GOLDENS}")
 
 add_executable(nricp-file-tests test/nricp_file_test.cpp)
 target_link_libraries(nricp-file-tests PRIVATE libnonrigid_icp gtest_main)
@@ -92,7 +106,9 @@ target_compile_definitions(nricp-file-tests PRIVATE
     NRICP_FIXED_PC="${CMAKE_SOURCE_DIR}/data/fixed_pc.csv"
     NRICP_MOVING_PC="${CMAKE_SOURCE_DIR}/data/moving_pc.csv"
     NRICP_GOLDEN_TRANSFORM="${CMAKE_SOURCE_DIR}/test/golden/data_fixed_moving_v50_b1_i15_w001_e2_n35000.nricp"
-    NRICP_SMOKE_TRANSFORM="${NRICP_DATA_SMOKE_TRANSFORM}")
+    NRICP_SMOKE_TRANSFORM="${NRICP_DATA_SMOKE_TRANSFORM}"
+    NRICP_ADDITIONAL_TRANSFORMS="${NRICP_ADDITIONAL_TRANSFORMS_DEF}"
+    NRICP_ADDITIONAL_GOLDENS="${NRICP_ADDITIONAL_GOLDENS_DEF}")
 set_target_properties(nricp-file-tests PROPERTIES DEBUG_POSTFIX _d)
 
 # Copy final executables to bin directory
@@ -120,9 +136,32 @@ add_test(
 
 add_test(
     NAME nricp-file-tests.DataSmoke
-    COMMAND $<TARGET_FILE:nricp-file-tests>
+    COMMAND $<TARGET_FILE:nricp-file-tests> --gtest_filter=-NricpAdditionalFits.*
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(nricp-file-tests.DataSmoke PROPERTIES DEPENDS nonrigid-icp.DataSmokeFit)
+
+foreach(additional_id IN LISTS NRICP_ADDITIONAL_TEST_IDS)
+    add_test(
+        NAME nonrigid-icp.AdditionalFit${additional_id}
+        COMMAND $<TARGET_FILE:nonrigid-icp>
+                -f ${CMAKE_SOURCE_DIR}/additional_tests/fixed.csv
+                -m ${CMAKE_SOURCE_DIR}/additional_tests/moving${additional_id}.csv
+                -t ${CMAKE_BINARY_DIR}/results/additional_fixed_moving${additional_id}_v50_b1_i15_w001_e2_n35000_test.nricp
+                -v 50
+                -b 1
+                -i 15
+                -w 0.01,0.01,0.01,0.01
+                -e 2.0
+                -n 35000
+                -s
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endforeach()
+
+add_test(
+    NAME nricp-file-tests.AdditionalData
+    COMMAND $<TARGET_FILE:nricp-file-tests> --gtest_filter=NricpAdditionalFits.*
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(nricp-file-tests.AdditionalData PROPERTIES DEPENDS "${NRICP_ADDITIONAL_FIT_TESTS}")
 
 add_test(
     NAME nonrigid-icp.DataSmokeTransform
