@@ -256,8 +256,8 @@ Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k
 }
 
 std::vector<int> RandInt(const int& min_val, const int& max_val, const uint32_t& n) {
-  if (max_val <= min_val) {
-    throw std::invalid_argument("min_val must be smaller than max_val");
+  if (max_val < min_val) {
+    throw std::invalid_argument("min_val must be smaller than or equal to max_val");
   }
   if (n == 0) {
     throw std::invalid_argument("n must be >0");

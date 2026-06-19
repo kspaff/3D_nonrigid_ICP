@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -356,6 +357,52 @@ TEST(CorrespondenceStats, MedianAndMadIncludeFirstElement) {
   mad_values << Scalar{100}, Scalar{101}, Scalar{0};
   EXPECT_DOUBLE_EQ(Median(mad_values), 100.0);
   EXPECT_DOUBLE_EQ(MAD(mad_values), 1.0);
+}
+
+TEST(CorrespondenceSampling, SelectsSinglePointWhenRequestExceedsCloudSize) {
+  const auto selected = RandInt(0, 0, 35000);
+
+  ASSERT_EQ(selected.size(), 1);
+  EXPECT_EQ(selected[0], 0);
+}
+
+TEST(CorrespondenceSampling, SelectsAllFixedPointsWhenRequestExceedsCloudSize) {
+  MatrixX3 fixed_points(3, 3);
+  fixed_points << Scalar{0}, Scalar{0}, Scalar{0},
+      Scalar{1}, Scalar{0}, Scalar{0},
+      Scalar{2}, Scalar{0}, Scalar{0};
+  MatrixX3 moving_points(3, 3);
+  moving_points << Scalar{0}, Scalar{0}, Scalar{0},
+      Scalar{1}, Scalar{0}, Scalar{0},
+      Scalar{2}, Scalar{0}, Scalar{0};
+
+  PtCloud fixed{fixed_points};
+  PtCloud moving{moving_points};
+  Correspondences correspondences{fixed, moving};
+  correspondences.SelectPointsByRandomSampling(35000);
+
+  const auto selected = correspondences.GetSelectedPoints();
+  ASSERT_EQ(selected.size(), 3);
+  EXPECT_EQ(selected[0], 0);
+  EXPECT_EQ(selected[1], 1);
+  EXPECT_EQ(selected[2], 2);
+}
+
+TEST(CorrespondenceSampling, PartialSelectionIsDeterministicAndSorted) {
+  const auto first = RandInt(0, 9, 4);
+  const auto second = RandInt(0, 9, 4);
+
+  EXPECT_EQ(first, second);
+  ASSERT_EQ(first.size(), 4);
+  EXPECT_TRUE(std::is_sorted(first.begin(), first.end()));
+  for (const int index : first) {
+    EXPECT_GE(index, 0);
+    EXPECT_LE(index, 9);
+  }
+}
+
+TEST(CorrespondenceSampling, RejectsZeroRequestedCorrespondences) {
+  EXPECT_THROW(RandInt(0, 2, 0), std::invalid_argument);
 }
 
 TEST(CorrespondenceMatching, KnnSearchFindsExactNearestNeighbors) {
