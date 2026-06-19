@@ -361,6 +361,38 @@ TEST(CorrespondenceMatching, KnnSearchFindsExactNearestNeighbors) {
   EXPECT_EQ(idx(2, 0), 3);
 }
 
+TEST(CorrespondenceMatching, MaxEuclideanDistanceKeepsValuesAtThreshold) {
+  MatrixX3 fixed_points(3, 3);
+  fixed_points << Scalar{0}, Scalar{0}, Scalar{0},
+      Scalar{0}, Scalar{0}, Scalar{0},
+      Scalar{0}, Scalar{0}, Scalar{0};
+  MatrixX3 moving_points(3, 3);
+  moving_points << Scalar{1.999f}, Scalar{0}, Scalar{0},
+      Scalar{2.0f}, Scalar{0}, Scalar{0},
+      Scalar{2.001f}, Scalar{0}, Scalar{0};
+
+  PtCloud fixed{fixed_points};
+  PtCloud moving{moving_points};
+  VectorX normal_x = VectorX::Ones(3);
+  VectorX normal_y = VectorX::Zero(3);
+  VectorX normal_z = VectorX::Zero(3);
+  fixed.SetNormals(normal_x, normal_y, normal_z);
+  VectorX ids(3);
+  ids << Scalar{1}, Scalar{2}, Scalar{3};
+  fixed.SetCorrespondenceId(ids);
+  moving.SetCorrespondenceId(ids);
+  moving.InitializeTranslationGrids(Scalar{1}, 1, {0, 0, 0, 0, 0, 0});
+
+  Correspondences correspondences{fixed, moving};
+  correspondences.SelectPointsByRandomSampling(3);
+  correspondences.MatchPointsByCorrespondenceId();
+  ASSERT_EQ(correspondences.num(), 3);
+
+  correspondences.RejectMaxEuclideanDistanceCriteria(Scalar{2});
+  EXPECT_EQ(correspondences.num(), 2);
+  EXPECT_LE(correspondences.euclidean_dists_t().dists.maxCoeff(), Scalar{2});
+}
+
 TEST(TranslationGridBasis, HermiteWeightsMatchReferenceMatrixEvaluator) {
   TranslationGrid grid;
   RowVector3 origin{};
