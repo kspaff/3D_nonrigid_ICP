@@ -1727,6 +1727,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Added Section 19 validation coverage for the `2.0` Euclidean rejection boundary. A focused ID-matched correspondence test now verifies that transformed Euclidean distances immediately below and exactly equal to `2.0` are retained, while a distance above `2.0` is rejected. Verification: `Release|x64` build succeeds with 0 warnings and 0 errors; the selected locked suite passes 14/14 in 63.87 s.
 - 2026-06-19: Euclidean threshold boundary validation committed locally as `60765f2c704cef3154006de5b0a2ca8e23de371a` (`Cover Euclidean rejection threshold boundary`).
 - 2026-06-19: Added Section 19 validation coverage for deterministic 15-iteration fitting. `nonrigid-icp.DataSmokeFitRepeat` now reruns the locked original fixed/moving registration to a second `.nricp`, and `nricp-file-tests.DataSmoke` verifies the repeat output matches the primary generated fit with exact hash first and the existing `1e-4` payload epsilon fallback. Verification: `Release|x64` build succeeds with 0 warnings and 0 errors; the selected locked suite passes 15/15 in 73.35 s.
+- 2026-06-19: Deterministic repeat fitting milestone committed locally as `368aaed0e4795e5ed49937817516d68c6dfffec2` (`Cover deterministic repeat fitting`).
 
 ## Abandoned
 
