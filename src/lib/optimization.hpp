@@ -14,13 +14,13 @@ class Optimization {
  public:
   Optimization();
   static OptimizationResults Solve(Correspondences& correspondences,
-                                   const std::vector<double>& weights_zero_observations);
+                                   const std::vector<Scalar>& weights_zero_observations);
 
  private:
-  static std::vector<Eigen::Triplet<double>> SparseIdentity(const int& n);
-  static std::vector<Eigen::Triplet<double>> MultiplyWithComponentsOfNormalVectors(
-      const std::vector<Eigen::Triplet<double>>& triplets_in, const Eigen::VectorXd& n_component);
+  static std::vector<Triplet> SparseIdentity(const int& n);
+  static std::vector<Triplet> MultiplyWithComponentsOfNormalVectors(
+      const std::vector<Triplet>& triplets_in, const VectorX& n_component);
   static void AddSubblockTriplets(const int& first_row, const int& first_col,
-                                  const std::vector<Eigen::Triplet<double>>& subblock_triplets,
-                                  std::vector<Eigen::Triplet<double>>& triplets);
+                                  const std::vector<Triplet>& subblock_triplets,
+                                  std::vector<Triplet>& triplets);
 };

@@ -30,14 +30,14 @@ struct Params {
   std::string fixed;
   std::string movable;
   std::string transform;
-  double voxel_size;
-  std::vector<double> grid_limits;
+  Scalar voxel_size;
+  std::vector<Scalar> grid_limits;
   uint32_t buffer_voxels;
   std::string matching_mode;
   uint32_t num_correspondences;
-  double max_euclidean_distance;
+  Scalar max_euclidean_distance;
   uint32_t num_iterations;
-  std::vector<double> weights;
+  std::vector<Scalar> weights;
   std::string debug_dir;
   bool suppress_logging;
   bool profiling;
@@ -230,12 +230,12 @@ Params ParseUserInputs(int argc, char** argv) {
     cxxopts::value<std::string>())
     ("v,voxel_size",
     "Voxel size of translation grids",
-    cxxopts::value<double>()->default_value("1"))
+    cxxopts::value<Scalar>()->default_value("1"))
     ("g,grid_limits",
     "Limits of translation grids to be defined as \"x_min,y_min,z_min,x_max,y_max,z_max\". Note "
     "that the extent of the grids in x,y,z must be an integer multiple of the voxel size. The "
     "grid limits are chosen automatically by passing \"0,0,0,0,0,0\".",
-    cxxopts::value<std::vector<double>>()->default_value("0,0,0,0,0,0"))
+    cxxopts::value<std::vector<Scalar>>()->default_value("0,0,0,0,0,0"))
     ("b,buffer_voxels",
     "Number of voxels to be used as buffer around the translation grids",
     cxxopts::value<uint32_t>()->default_value("2"))
@@ -248,13 +248,13 @@ Params ParseUserInputs(int argc, char** argv) {
     cxxopts::value<uint32_t>()->default_value("10000"))
     ("e,max_euclidean_distance",
     "Maximum euclidean distance between corresponding points",
-    cxxopts::value<double>()->default_value("1"))
+    cxxopts::value<Scalar>()->default_value("1"))
     ("i,num_iterations",
     "Number of iterations",
     cxxopts::value<uint32_t>()->default_value("5"))
     ("w,weights",
     "Weights of zero observations as list for \"f,fx/fy/fz,fxy/fxz/fyz,fxyz\"",
-    cxxopts::value<std::vector<double>>()->default_value("1,1,1,1"))
+    cxxopts::value<std::vector<Scalar>>()->default_value("1,1,1,1"))
     ("d,debug_dir",
     "Directory for debug output for correspondences.",
     cxxopts::value<std::string>()->default_value(""))
@@ -286,14 +286,14 @@ Params ParseUserInputs(int argc, char** argv) {
   params.fixed = result["fixed"].as<std::string>();
   params.movable = result["movable"].as<std::string>();
   params.transform = result["transform"].as<std::string>();
-  params.voxel_size = result["voxel_size"].as<double>();
-  params.grid_limits = result["grid_limits"].as<std::vector<double>>();
+  params.voxel_size = result["voxel_size"].as<Scalar>();
+  params.grid_limits = result["grid_limits"].as<std::vector<Scalar>>();
   params.buffer_voxels = result["buffer_voxels"].as<uint32_t>();
   params.matching_mode = result["matching_mode"].as<std::string>();
   params.num_correspondences = result["num_correspondences"].as<uint32_t>();
-  params.max_euclidean_distance = result["max_euclidean_distance"].as<double>();
+  params.max_euclidean_distance = result["max_euclidean_distance"].as<Scalar>();
   params.num_iterations = result["num_iterations"].as<uint32_t>();
-  params.weights = result["weights"].as<std::vector<double>>();
+  params.weights = result["weights"].as<std::vector<Scalar>>();
   params.debug_dir = result["debug_dir"].as<std::string>();
   params.suppress_logging = result["suppress_logging"].as<bool>();
   params.profiling = result["profiling"].as<bool>();

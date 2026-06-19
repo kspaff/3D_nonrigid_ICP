@@ -41,8 +41,14 @@ int main(int argc, char** argv) {
     }
     if (params.profiling) profiler.Stop("A.01 Read input point cloud");
 
+    if (params.profiling) profiler.Start("A.02 Read transform");
+    MatrixX empty_points(0, 3);
+    PtCloud transform_grid_holder{empty_points};
+    transform_grid_holder.ImportTranslationGrids(params.transform);
+    if (params.profiling) profiler.Stop("A.02 Read transform");
+
     // Iterate over chunks of the point cloud
-    if (params.profiling) profiler.Start("A.02 Transformation of point cloud");
+    if (params.profiling) profiler.Start("A.03 Transformation of point cloud");
     using Index = Eigen::Index;
     Index total_rows = X.rows();
     Index chunk_size = static_cast<Index>(params.chunk_size);
@@ -66,23 +72,23 @@ int main(int argc, char** argv) {
       // Transform points in chunk
       auto pc_mov_chunk{PtCloud(
           X(row_indices, {X.namedColIndex("x"), X.namedColIndex("y"), X.namedColIndex("z")}))};
-      // TODO Currently the translation grid is read from file for each chunk. Read once and pass to
-      // function.
-      pc_mov_chunk.ImportTranslationGrids(params.transform);
+      pc_mov_chunk.x_translation_grid() = transform_grid_holder.x_translation_grid();
+      pc_mov_chunk.y_translation_grid() = transform_grid_holder.y_translation_grid();
+      pc_mov_chunk.z_translation_grid() = transform_grid_holder.z_translation_grid();
       pc_mov_chunk.InitMatricesForUpdateXt();
       pc_mov_chunk.UpdateXt();
 
       // Update points
       X(row_indices, Eigen::seqN(0, 3)) = pc_mov_chunk.Xt();
     }
-    if (params.profiling) profiler.Stop("A.02 Transformation of point cloud");
+    if (params.profiling) profiler.Stop("A.03 Transformation of point cloud");
 
-    if (params.profiling) profiler.Start("A.03 Write point cloud");
+    if (params.profiling) profiler.Start("A.04 Write point cloud");
     if (!params.suppress_logging) {
       std::cout << fmt::format("Write transformed point cloud to file: \"{}\"\n", params.pc_out);
     }
     SaveMatrixToFile(X, params.pc_in, params.pc_out);
-    if (params.profiling) profiler.Stop("A.03 Write point cloud");
+    if (params.profiling) profiler.Stop("A.04 Write point cloud");
 
     if (!params.suppress_logging) {
       std::cout << fmt::format("Finished \"nonrigid-icp-transform\" in {}!\n", timer);

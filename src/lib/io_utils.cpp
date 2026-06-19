@@ -6,9 +6,9 @@
 #include <stdexcept>
 #include <iomanip>
 
-NamedColumnMatrix<Eigen::MatrixXd> ImportFileToMatrix(const std::string& path,
-                                                      bool with_normals,
-                                                      bool with_correspondence_id) 
+NamedColumnMatrix<MatrixX> ImportFileToMatrix(const std::string& path,
+                                              bool with_normals,
+                                              bool with_correspondence_id) 
 													  {
   int expected_cols = 3;
   if (with_normals) expected_cols += 3;
@@ -19,7 +19,7 @@ NamedColumnMatrix<Eigen::MatrixXd> ImportFileToMatrix(const std::string& path,
     throw std::runtime_error("Cannot open file: " + path);
   }
 
-  std::vector<std::vector<double>> data;
+  std::vector<std::vector<Scalar>> data;
   std::string line;
   bool first_line = true;
 
@@ -30,7 +30,7 @@ NamedColumnMatrix<Eigen::MatrixXd> ImportFileToMatrix(const std::string& path,
 
     std::stringstream ss(line);
     std::string cell;
-    std::vector<double> row;
+    std::vector<Scalar> row;
     bool is_header = false;
 
     while (std::getline(ss, cell, ',')) {
@@ -40,7 +40,7 @@ NamedColumnMatrix<Eigen::MatrixXd> ImportFileToMatrix(const std::string& path,
       if (cell.empty()) continue;
 
       try {
-        row.push_back(std::stod(cell));
+        row.push_back(static_cast<Scalar>(std::stod(cell)));
       } catch (const std::invalid_argument&) {
         if (first_line) {
           is_header = true;
@@ -78,17 +78,17 @@ NamedColumnMatrix<Eigen::MatrixXd> ImportFileToMatrix(const std::string& path,
   }
 
   // Populate Eigen matrix
-  Eigen::MatrixXd mat(data.size(), col_names.size());
+  MatrixX mat(data.size(), col_names.size());
   for (size_t i = 0; i < data.size(); ++i) {
     for (size_t j = 0; j < col_names.size(); ++j) {
       mat(i, j) = data[i][j];
     }
   }
 
-  return NamedColumnMatrix<Eigen::MatrixXd>(mat, col_names);
+  return NamedColumnMatrix<MatrixX>(mat, col_names);
 }
 
-void SaveMatrixToFile(const NamedColumnMatrix<Eigen::MatrixXd>& x_updated,
+void SaveMatrixToFile(const NamedColumnMatrix<MatrixX>& x_updated,
                       const std::string& path_in, 
                       const std::string& path_out) {
   std::ifstream fin(path_in);

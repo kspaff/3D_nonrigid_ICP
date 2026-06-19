@@ -2,9 +2,25 @@
 
 #include <stdexcept>
 
-void TranslationGrid::Initialize(const Eigen::RowVector3d& grid_origin, const int& x_num_voxels,
+namespace {
+
+Scalar CubicHermiteBasis(const Scalar a, const int endpoint, const bool derivative) {
+  const Scalar a2{a * a};
+  const Scalar a3{a2 * a};
+
+  if (derivative) {
+    return endpoint == 0 ? a3 - Scalar{2} * a2 + a : a3 - a2;
+  }
+
+  return endpoint == 0 ? Scalar{2} * a3 - Scalar{3} * a2 + Scalar{1}
+                       : -Scalar{2} * a3 + Scalar{3} * a2;
+}
+
+}  // namespace
+
+void TranslationGrid::Initialize(const RowVector3& grid_origin, const int& x_num_voxels,
                                  const int& y_num_voxels, const int& z_num_voxels,
-                                 const double& voxel_size, const int& first_idx_adj) {
+                                 const Scalar& voxel_size, const int& first_idx_adj) {
   grid_origin_ = grid_origin;
   voxel_size_ = voxel_size;
 
@@ -117,15 +133,15 @@ void TranslationGrid::Initialize(const Eigen::RowVector3d& grid_origin, const in
     }
 }
 
-std::tuple<Eigen::MatrixX3i, Eigen::MatrixX3d> TranslationGrid::GetGridReference(
-    const Eigen::MatrixX3d& X) {
+std::tuple<Eigen::MatrixX3i, MatrixX3> TranslationGrid::GetGridReference(
+    const MatrixX3& X) {
   int64_t num_obs{X.rows()};
 
   Eigen::MatrixX3i X_voxel_idx(num_obs, 3);  // returned
-  Eigen::MatrixX3d Xn_voxel(num_obs, 3);     // returned
+  MatrixX3 Xn_voxel(num_obs, 3);             // returned
 
-  Eigen::RowVector3d X_grid{};   // intermediate result
-  Eigen::RowVector3d X_voxel{};  // intermediate result
+  RowVector3 X_grid{};   // intermediate result
+  RowVector3 X_voxel{};  // intermediate result
 
   for (int i = 0; i < num_obs; i++) {
     X_grid(0) = X(i, 0) - grid_origin_(0);
@@ -156,9 +172,9 @@ std::tuple<Eigen::MatrixX3i, Eigen::MatrixX3d> TranslationGrid::GetGridReference
     if (X_voxel_idx(i, 1) == y_num_voxels_) X_voxel_idx(i, 1) -= 1;
     if (X_voxel_idx(i, 2) == z_num_voxels_) X_voxel_idx(i, 2) -= 1;
 
-    X_voxel(0) = X_grid(0) - static_cast<double>(X_voxel_idx(i, 0)) * voxel_size_;
-    X_voxel(1) = X_grid(1) - static_cast<double>(X_voxel_idx(i, 1)) * voxel_size_;
-    X_voxel(2) = X_grid(2) - static_cast<double>(X_voxel_idx(i, 2)) * voxel_size_;
+    X_voxel(0) = X_grid(0) - static_cast<Scalar>(X_voxel_idx(i, 0)) * voxel_size_;
+    X_voxel(1) = X_grid(1) - static_cast<Scalar>(X_voxel_idx(i, 1)) * voxel_size_;
+    X_voxel(2) = X_grid(2) - static_cast<Scalar>(X_voxel_idx(i, 2)) * voxel_size_;
 
     Xn_voxel(i, 0) = X_voxel(0) / voxel_size_;
     Xn_voxel(i, 1) = X_voxel(1) / voxel_size_;
@@ -168,8 +184,8 @@ std::tuple<Eigen::MatrixX3i, Eigen::MatrixX3d> TranslationGrid::GetGridReference
   return {X_voxel_idx, Xn_voxel};
 }
 
-std::tuple<Vector64d, Vector64i> TranslationGrid::Get_f(const Eigen::RowVector3i& X_voxel_idx) {
-  Vector64d f_vals{};     // returned
+std::tuple<Vector64, Vector64i> TranslationGrid::Get_f(const Eigen::RowVector3i& X_voxel_idx) {
+  Vector64 f_vals{};      // returned
   Vector64i f_idx_adj{};  // returned
 
   Vector8i dx_voxel_idx, dy_voxel_idx, dz_voxel_idx;
@@ -206,69 +222,96 @@ std::tuple<Vector64d, Vector64i> TranslationGrid::Get_f(const Eigen::RowVector3i
   return {f_vals, f_idx_adj};
 }
 
-Eigen::VectorXd TranslationGrid::p(const Eigen::MatrixX3d& X) {
+VectorX TranslationGrid::p(const MatrixX3& X) {
   int64_t num_points{X.rows()};
 
-  Eigen::VectorXd p(num_points);
+  VectorX p(num_points);
 
   auto [X_voxel_idx, Xn_voxel]{GetGridReference(X)};
   auto X_power{Compute_X_power(Xn_voxel)};
 
   for (int i = 0; i < num_points; i++) {
     auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
-    auto J_voxel{X_power.row(i) * inv_A_};
-    p(i) = J_voxel * f_vals;
+    p(i) = (X_power.row(i) * inv_A_ * f_vals)(0, 0);
   }
 
   return p;
 }
 
-Eigen::VectorXd TranslationGrid::p(const Eigen::MatrixX3d& X,
-                                   const Eigen::Matrix<double, Eigen::Dynamic, 64>& X_power,
-                                   const Eigen::MatrixX3i& X_voxel_idx) {
+VectorX TranslationGrid::p(const MatrixX3& X,
+                           const MatrixX64& X_power,
+                           const Eigen::MatrixX3i& X_voxel_idx) {
   int64_t num_points{X.rows()};
 
-  Eigen::VectorXd p(num_points);
+  VectorX p(num_points);
 
   for (int i = 0; i < num_points; i++) {
     auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
-    auto J_voxel{X_power.row(i) * inv_A_};
-    p(i) = J_voxel * f_vals;
+    p(i) = (X_power.row(i) * inv_A_ * f_vals)(0, 0);
   }
 
   return p;
 }
 
-Eigen::Matrix<double, Eigen::Dynamic, 64> TranslationGrid::Compute_X_power(
-    const Eigen::MatrixX3d& Xn_voxel) {
+MatrixX64 TranslationGrid::ComputeHermiteWeights(const MatrixX3& Xn_voxel) {
   int64_t num_points{Xn_voxel.rows()};
-  Eigen::Matrix<double, Eigen::Dynamic, 64> X_power(num_points, 64);
+  MatrixX64 X_weights(num_points, 64);
+
+  const int derivative_x[8]{0, 1, 0, 0, 1, 1, 0, 1};
+  const int derivative_y[8]{0, 0, 1, 0, 1, 0, 1, 1};
+  const int derivative_z[8]{0, 0, 0, 1, 0, 1, 1, 1};
+
+  for (int point_idx = 0; point_idx < num_points; ++point_idx) {
+    const Scalar x{Xn_voxel(point_idx, 0)};
+    const Scalar y{Xn_voxel(point_idx, 1)};
+    const Scalar z{Xn_voxel(point_idx, 2)};
+
+    for (int channel = 0; channel < 8; ++channel) {
+      for (int corner = 0; corner < 8; ++corner) {
+        const int corner_x{corner & 1};
+        const int corner_y{(corner >> 1) & 1};
+        const int corner_z{(corner >> 2) & 1};
+        X_weights(point_idx, 8 * channel + corner) =
+            CubicHermiteBasis(x, corner_x, derivative_x[channel] != 0) *
+            CubicHermiteBasis(y, corner_y, derivative_y[channel] != 0) *
+            CubicHermiteBasis(z, corner_z, derivative_z[channel] != 0);
+      }
+    }
+  }
+
+  return X_weights;
+}
+
+MatrixX64 TranslationGrid::Compute_X_power(
+    const MatrixX3& Xn_voxel) {
+  int64_t num_points{Xn_voxel.rows()};
+  MatrixX64 X_power(num_points, 64);
   int col{-1};
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
       for (int k = 0; k < 4; k++) {
         col++;
-        X_power.col(col) = Xn_voxel.col(0).array().pow(double(i)) *
-                           Xn_voxel.col(1).array().pow(double(j)) *
-                           Xn_voxel.col(2).array().pow(double(k));
+        X_power.col(col) = Xn_voxel.col(0).array().pow(static_cast<Scalar>(i)) *
+                           Xn_voxel.col(1).array().pow(static_cast<Scalar>(j)) *
+                           Xn_voxel.col(2).array().pow(static_cast<Scalar>(k));
       }
     }
   }
   return X_power;
 }
 
-std::vector<Eigen::Triplet<double>> TranslationGrid::J(const Eigen::MatrixX3d& X) {
+std::vector<Triplet> TranslationGrid::J(const MatrixX3& X) {
   auto [X_voxel_idx, Xn_voxel]{GetGridReference(X)};
   auto X_power{Compute_X_power(Xn_voxel)};
 
-  std::vector<Eigen::Triplet<double>> triplets;
+  std::vector<Triplet> triplets;
   triplets.reserve(X.rows() * 64);
 
-  Vector64d coeff_vals{};
+  Vector64 coeff_vals{};
   Vector64i coeff_rows{};
 
   for (int i = 0; i < X.rows(); i++) {
-    coeff_vals = X_power.row(i) * inv_A_;
+    coeff_vals = (X_power.row(i) * inv_A_).transpose();
     coeff_rows.setConstant(i);
     auto [f_vals, coeff_cols]{Get_f(X_voxel_idx.row(i))};
     for (int j = 0; j < 64; j++) {
@@ -279,7 +322,7 @@ std::vector<Eigen::Triplet<double>> TranslationGrid::J(const Eigen::MatrixX3d& X
   return triplets;
 }
 
-void TranslationGrid::UpdateAllGridValsFromVector(const Eigen::VectorXd& grid_vals_new) {
+void TranslationGrid::UpdateAllGridValsFromVector(const VectorX& grid_vals_new) {
   for (int x_voxel_idx = 0; x_voxel_idx < x_num_voxels_ + 1; x_voxel_idx++)
     for (int y_voxel_idx = 0; y_voxel_idx < y_num_voxels_ + 1; y_voxel_idx++)
       for (int z_voxel_idx = 0; z_voxel_idx < z_num_voxels_ + 1; z_voxel_idx++) {
@@ -314,8 +357,8 @@ void TranslationGrid::UpdateVoxelGridVals(const int& x_voxel_idx, const int& y_v
   grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz = grid_vals_new.fxyz;
 }
 
-const Eigen::RowVector3d& TranslationGrid::grid_origin() const { return grid_origin_; }
-const double& TranslationGrid::voxel_size() const { return voxel_size_; }
+const RowVector3& TranslationGrid::grid_origin() const { return grid_origin_; }
+const Scalar& TranslationGrid::voxel_size() const { return voxel_size_; }
 const int& TranslationGrid::x_num_voxels() const { return x_num_voxels_; }
 const int& TranslationGrid::y_num_voxels() const { return y_num_voxels_; }
 const int& TranslationGrid::z_num_voxels() const { return z_num_voxels_; }

@@ -1,9 +1,37 @@
 #include "optimization.hpp"
 
+#include <stdexcept>
+
+namespace {
+
+Scalar WeightForDerivativeChannel(const int channel, const std::vector<Scalar>& weights) {
+  if (weights.size() != 4) {
+    throw std::invalid_argument("Expected four zero-observation weights: f, first, second, third");
+  }
+
+  if (channel == 0) return weights[0];
+  if (channel >= 1 && channel <= 3) return weights[1];
+  if (channel >= 4 && channel <= 6) return weights[2];
+  return weights[3];
+}
+
+VectorX BuildDirectObservationWeights(const int num_unknowns, const int num_grid_vals_per_component,
+                                      const std::vector<Scalar>& weights) {
+  VectorX direct_obs_weights(num_unknowns);
+  for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
+    const int component_local_idx = unknown_idx % num_grid_vals_per_component;
+    const int derivative_channel = component_local_idx % 8;
+    direct_obs_weights(unknown_idx) = WeightForDerivativeChannel(derivative_channel, weights);
+  }
+  return direct_obs_weights;
+}
+
+}  // namespace
+
 Optimization::Optimization() = default;
 
 OptimizationResults Optimization::Solve(Correspondences& correspondences,
-                                        const std::vector<double>& weights_zero_observations) {
+                                        const std::vector<Scalar>& weights_zero_observations) {
   OptimizationResults optimization_results{};  // returned
 
   CorrespondencesPointsWithAttributes X{correspondences.GetCorrespondences()};
@@ -31,7 +59,7 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
 
   int num_observations{X.num + num_unknowns};
 
-  std::vector<Eigen::Triplet<double>> J_triplets;
+  std::vector<Triplet> J_triplets;
   J_triplets.reserve(J_pc_mov_x_nx_triplets.size() + J_pc_mov_y_ny_triplets.size() +
                      J_pc_mov_z_nz_triplets.size() + J_direct_obs_triplets.size());
 
@@ -54,25 +82,25 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
                       J_triplets);
   // clang-format on
 
-  Eigen::SparseMatrix<double> J(num_observations, num_unknowns);
+  SparseMatrix J(num_observations, num_unknowns);
   J.setFromTriplets(J_triplets.begin(), J_triplets.end());
 
-  Eigen::VectorXd p(num_observations);
-  // Todo Use weights_zero_observations[0] to weights_zero_observations[3] for observation of
-  // f,fx,fy,fz,...
-  p << Eigen::VectorXd::Ones(correspondences.num()),
-      Eigen::VectorXd::Ones(num_unknowns) * weights_zero_observations[0];
+  const int num_grid_vals_per_component{correspondences.pc_mov().x_translation_grid().num_grid_vals()};
+  const VectorX direct_obs_weights{
+      BuildDirectObservationWeights(num_unknowns, num_grid_vals_per_component, weights_zero_observations)};
+  VectorX p(num_observations);
+  p << VectorX::Ones(correspondences.num()), direct_obs_weights;
   auto P{p.asDiagonal()};
 
-  Eigen::VectorXd b(num_observations);
-  Eigen::VectorXd b0(num_observations);
-  b = Eigen::VectorXd::Zero(num_observations);
-  b0 << correspondences.point_to_plane_dists().dists, Eigen::VectorXd::Zero(num_unknowns);
+  VectorX b(num_observations);
+  VectorX b0(num_observations);
+  b = VectorX::Zero(num_observations);
+  b0 << correspondences.point_to_plane_dists().dists, VectorX::Zero(num_unknowns);
   auto l{b - b0};
 
   // Solve!
-  Eigen::VectorXd xhat(num_unknowns);
-  Eigen::BiCGSTAB<Eigen::SparseMatrix<double>> solver;
+  VectorX xhat(num_unknowns);
+  Eigen::BiCGSTAB<SparseMatrix> solver;
   solver.compute(J.transpose() * P * J);
   if (solver.info() != Eigen::Success) {
     optimization_results.success = false;
@@ -100,23 +128,23 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
   return optimization_results;
 }
 
-std::vector<Eigen::Triplet<double>> Optimization::SparseIdentity(const int& n) {
-  std::vector<Eigen::Triplet<double>> triplets;
+std::vector<Triplet> Optimization::SparseIdentity(const int& n) {
+  std::vector<Triplet> triplets;
   triplets.reserve(n);
   for (int i = 0; i < n; i++) {
-    triplets.emplace_back(i, i, 1.0);
+    triplets.emplace_back(i, i, Scalar{1});
   }
   return triplets;
 }
 
-std::vector<Eigen::Triplet<double>> Optimization::MultiplyWithComponentsOfNormalVectors(
-    const std::vector<Eigen::Triplet<double>>& triplets_in, const Eigen::VectorXd& n_component) {
-  std::vector<Eigen::Triplet<double>> triplets_out;
+std::vector<Triplet> Optimization::MultiplyWithComponentsOfNormalVectors(
+    const std::vector<Triplet>& triplets_in, const VectorX& n_component) {
+  std::vector<Triplet> triplets_out;
   triplets_out.reserve(triplets_in.size());
   for (auto const& triplet : triplets_in) {
     int row{triplet.row()};
     int col{triplet.col()};
-    double val{triplet.value() * n_component(triplet.row())};
+    Scalar val{triplet.value() * n_component(triplet.row())};
     triplets_out.emplace_back(row, col, val);
   }
 
@@ -124,12 +152,12 @@ std::vector<Eigen::Triplet<double>> Optimization::MultiplyWithComponentsOfNormal
 }
 
 void Optimization::AddSubblockTriplets(const int& first_row, const int& first_col,
-                                       const std::vector<Eigen::Triplet<double>>& subblock_triplets,
-                                       std::vector<Eigen::Triplet<double>>& triplets) {
+                                       const std::vector<Triplet>& subblock_triplets,
+                                       std::vector<Triplet>& triplets) {
   for (auto const& triplet : subblock_triplets) {
     int row{first_row + triplet.row()};
     int col{first_col + triplet.col()};
-    double val{triplet.value()};
+    Scalar val{triplet.value()};
     triplets.emplace_back(row, col, val);
   }
 }

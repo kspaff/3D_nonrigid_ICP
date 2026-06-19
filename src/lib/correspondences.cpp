@@ -1,5 +1,6 @@
 #include "correspondences.hpp"
 
+#include <cmath>
 #include <nanoflann.hpp>
 #include <numeric>
 
@@ -13,7 +14,7 @@ void Correspondences::SelectPointsByRandomSampling(const uint32_t& num_correspon
 }
 
 void Correspondences::MatchPointsByNearestNeighbor() {
-  Eigen::MatrixXd pc_fix_X_sel{GetSelectedPoints_()};
+  MatrixX pc_fix_X_sel{GetSelectedPoints_()};
 
   idx_pc_mov_ = std::vector<int>(num());
 
@@ -27,7 +28,7 @@ void Correspondences::MatchPointsByNearestNeighbor() {
 }
 
 void Correspondences::MatchPointsByCorrespondenceId() {
-  Eigen::MatrixXd pc_fix_X_sel{GetSelectedCorrespondenceIds_()};
+  MatrixX pc_fix_X_sel{GetSelectedCorrespondenceIds_()};
 
   idx_pc_mov_ = std::vector<int>(num());
 
@@ -59,7 +60,7 @@ void Correspondences::MatchPointsByCorrespondenceId() {
   ComputeDists();
 }
 
-void Correspondences::RejectMaxEuclideanDistanceCriteria(const double& max_euclidean_distance) {
+void Correspondences::RejectMaxEuclideanDistanceCriteria(const Scalar& max_euclidean_distance) {
   std::vector<bool> keep(num(), true);
 
   for (uint64_t i = 0; i < num(); i++) {
@@ -93,12 +94,12 @@ void Correspondences::RejectStdMadCriteria() {
 CorrespondencesPointsWithAttributes Correspondences::GetCorrespondences() {
   int num_correspondences{static_cast<int>(idx_pc_fix_.size())};
 
-  Eigen::MatrixX3d pc_fix_X(num_correspondences, 3);
-  Eigen::VectorXd pc_fix_nx(num_correspondences);
-  Eigen::VectorXd pc_fix_ny(num_correspondences);
-  Eigen::VectorXd pc_fix_nz(num_correspondences);
-  Eigen::MatrixX3d pc_mov_X(num_correspondences, 3);
-  Eigen::MatrixX3d pc_mov_Xt(num_correspondences, 3);
+  MatrixX3 pc_fix_X(num_correspondences, 3);
+  VectorX pc_fix_nx(num_correspondences);
+  VectorX pc_fix_ny(num_correspondences);
+  VectorX pc_fix_nz(num_correspondences);
+  MatrixX3 pc_mov_X(num_correspondences, 3);
+  MatrixX3 pc_mov_Xt(num_correspondences, 3);
 
   for (int i = 0; i < num_correspondences; i++) {
     pc_fix_X(i, 0) = pc_fix_.X()(idx_pc_fix_[i], 0);
@@ -144,8 +145,8 @@ std::vector<T> KeepSubsetOfVector(const std::vector<T>& old_vector, const std::v
   return new_vector;
 }
 
-Eigen::MatrixXd Correspondences::GetSelectedPoints_() {
-  Eigen::MatrixXd X_sel(idx_pc_fix_.size(), 3);
+MatrixX Correspondences::GetSelectedPoints_() {
+  MatrixX X_sel(idx_pc_fix_.size(), 3);
   for (size_t i = 0; i < idx_pc_fix_.size(); i++) {
     X_sel(i, 0) = pc_fix_.X()(idx_pc_fix_[i], 0);
     X_sel(i, 1) = pc_fix_.X()(idx_pc_fix_[i], 1);
@@ -154,8 +155,8 @@ Eigen::MatrixXd Correspondences::GetSelectedPoints_() {
   return X_sel;
 }
 
-Eigen::MatrixXd Correspondences::GetSelectedCorrespondenceIds_() {
-  Eigen::MatrixXd X_sel(idx_pc_fix_.size(), 1);
+MatrixX Correspondences::GetSelectedCorrespondenceIds_() {
+  MatrixX X_sel(idx_pc_fix_.size(), 1);
   for (size_t i = 0; i < idx_pc_fix_.size(); i++) {
     X_sel(i, 0) = pc_fix_.correspondence_id()(idx_pc_fix_[i]);
   }
@@ -163,10 +164,10 @@ Eigen::MatrixXd Correspondences::GetSelectedCorrespondenceIds_() {
 }
 
 void Correspondences::ComputeDists() {
-  point_to_plane_dists_.dists = Eigen::VectorXd(idx_pc_fix_.size());
-  point_to_plane_dists_t_.dists = Eigen::VectorXd(idx_pc_fix_.size());
-  euclidean_dists_.dists = Eigen::VectorXd(idx_pc_fix_.size());
-  euclidean_dists_t_.dists = Eigen::VectorXd(idx_pc_fix_.size());
+  point_to_plane_dists_.dists = VectorX(idx_pc_fix_.size());
+  point_to_plane_dists_t_.dists = VectorX(idx_pc_fix_.size());
+  euclidean_dists_.dists = VectorX(idx_pc_fix_.size());
+  euclidean_dists_t_.dists = VectorX(idx_pc_fix_.size());
 
   auto X{GetCorrespondences()};
 
@@ -175,19 +176,19 @@ void Correspondences::ComputeDists() {
   }
 
   for (int i = 0; i < X.num; i++) {
-    double dx{X.pc_mov_X(i, 0) - X.pc_fix_X(i, 0)};
-    double dy{X.pc_mov_X(i, 1) - X.pc_fix_X(i, 1)};
-    double dz{X.pc_mov_X(i, 2) - X.pc_fix_X(i, 2)};
+    Scalar dx{X.pc_mov_X(i, 0) - X.pc_fix_X(i, 0)};
+    Scalar dy{X.pc_mov_X(i, 1) - X.pc_fix_X(i, 1)};
+    Scalar dz{X.pc_mov_X(i, 2) - X.pc_fix_X(i, 2)};
 
-    double dxt{X.pc_mov_Xt(i, 0) - X.pc_fix_X(i, 0)};
-    double dyt{X.pc_mov_Xt(i, 1) - X.pc_fix_X(i, 1)};
-    double dzt{X.pc_mov_Xt(i, 2) - X.pc_fix_X(i, 2)};
+    Scalar dxt{X.pc_mov_Xt(i, 0) - X.pc_fix_X(i, 0)};
+    Scalar dyt{X.pc_mov_Xt(i, 1) - X.pc_fix_X(i, 1)};
+    Scalar dzt{X.pc_mov_Xt(i, 2) - X.pc_fix_X(i, 2)};
 
-    double point_to_plane_dist{dx * X.pc_fix_nx(i) + dy * X.pc_fix_ny(i) + dz * X.pc_fix_nz(i)};
-    double point_to_plane_dist_t{dxt * X.pc_fix_nx(i) + dyt * X.pc_fix_ny(i) +
+    Scalar point_to_plane_dist{dx * X.pc_fix_nx(i) + dy * X.pc_fix_ny(i) + dz * X.pc_fix_nz(i)};
+    Scalar point_to_plane_dist_t{dxt * X.pc_fix_nx(i) + dyt * X.pc_fix_ny(i) +
                                  dzt * X.pc_fix_nz(i)};
-    double euclidean_dist{sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2))};
-    double euclidean_dist_t{sqrt(pow(dxt, 2) + pow(dyt, 2) + pow(dzt, 2))};
+    Scalar euclidean_dist{std::sqrt(dx * dx + dy * dy + dz * dz)};
+    Scalar euclidean_dist_t{std::sqrt(dxt * dxt + dyt * dyt + dzt * dzt)};
 
     point_to_plane_dists_.dists(i) = point_to_plane_dist;
     point_to_plane_dists_t_.dists(i) = point_to_plane_dist_t;
@@ -217,9 +218,9 @@ void Correspondences::ComputeDists() {
   euclidean_dists_t_.std_mad = 1.4826 * MAD(euclidean_dists_t_.dists);
 }
 
-Eigen::MatrixXi KnnSearch(const Eigen::MatrixXd& X, const Eigen::MatrixXd& X_query, const int& k) {
+Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k) {
   // Create kd tree
-  typedef nanoflann::KDTreeEigenMatrixAdaptor<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
+  typedef nanoflann::KDTreeEigenMatrixAdaptor<MatrixX>
       kd_tree;
   kd_tree mat_index(X.cols(), std::cref(X), LEAF_SIZE);
 
@@ -227,13 +228,13 @@ Eigen::MatrixXi KnnSearch(const Eigen::MatrixXd& X, const Eigen::MatrixXd& X_que
   Eigen::MatrixXi mat_idx_nn(X_query.rows(), k);
   for (Eigen::Index i = 0; i < X_query.rows(); i++) {
     // Query point
-    Eigen::VectorXd row = X_query.row(i);
-    std::vector<double> qp{row.data(), row.data() + row.size()};
+    VectorX row = X_query.row(i);
+    std::vector<Scalar> qp{row.data(), row.data() + row.size()};
 
     // Search for nn of query point
     std::vector<size_t> idx_nn(k);
-    std::vector<double> dists_nn(k);  // not used
-    nanoflann::KNNResultSet<double> resultSet(k);
+    std::vector<Scalar> dists_nn(k);  // not used
+    nanoflann::KNNResultSet<Scalar> resultSet(k);
     resultSet.init(&idx_nn[0], &dists_nn[0]);
     mat_index.index_->findNeighbors(resultSet, &qp[0], nanoflann::SearchParameters(10));
 
@@ -267,8 +268,8 @@ std::vector<int> RandInt(const int& min_val, const int& max_val, const uint32_t&
   return v;
 }
 
-double Median(const Eigen::VectorXd& v) {
-  // VectorXd --> vector<double>
+double Median(const VectorX& v) {
+  // VectorX --> vector<double>
   std::vector<double> vv(v.size());
   for (int i = 1; i < v.size(); i++) {
     vv[i] = v[i];
@@ -282,9 +283,9 @@ double Median(const Eigen::VectorXd& v) {
   return median;
 }
 
-double MAD(const Eigen::VectorXd& v) {
+double MAD(const VectorX& v) {
   auto med{Median(v)};
-  Eigen::VectorXd dmed(v.size());
+  VectorX dmed(v.size());
   for (int i = 1; i < v.size(); i++) {
     dmed[i] = abs(v[i] - med);
   }
@@ -292,7 +293,7 @@ double MAD(const Eigen::VectorXd& v) {
   return mad;
 }
 
-double Std(const Eigen::VectorXd& v) {
+double Std(const VectorX& v) {
   double std{sqrt((v.array() - v.mean()).square().sum() / ((double)v.size() - 1))};
   return std;
 }

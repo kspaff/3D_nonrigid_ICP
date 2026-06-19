@@ -32,6 +32,7 @@ FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
 )
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
@@ -79,6 +80,21 @@ target_link_libraries(nonrigid-icp-transform libnonrigid_icp ${LIB_CXXOPTS} ${LI
 target_include_directories(nonrigid-icp-transform PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 set_target_properties(nonrigid-icp-transform PROPERTIES DEBUG_POSTFIX _d)
 
+# Unit and smoke tests
+set(NRICP_DATA_SMOKE_TRANSFORM "${CMAKE_BINARY_DIR}/results/data_fixed_moving_v50_b1_i15_w001_e2_n35000_test.nricp")
+set(NRICP_DATA_SMOKE_TRANSFORMED "${CMAKE_BINARY_DIR}/results/moving_pc_transformed_v50_b1_i15_w001_e2_n35000_test.csv")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/results")
+
+add_executable(nricp-file-tests test/nricp_file_test.cpp)
+target_link_libraries(nricp-file-tests PRIVATE libnonrigid_icp gtest_main)
+target_include_directories(nricp-file-tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+target_compile_definitions(nricp-file-tests PRIVATE
+    NRICP_FIXED_PC="${CMAKE_SOURCE_DIR}/data/fixed_pc.csv"
+    NRICP_MOVING_PC="${CMAKE_SOURCE_DIR}/data/moving_pc.csv"
+    NRICP_GOLDEN_TRANSFORM="${CMAKE_SOURCE_DIR}/test/golden/data_fixed_moving_v50_b1_i15_w001_e2_n35000.nricp"
+    NRICP_SMOKE_TRANSFORM="${NRICP_DATA_SMOKE_TRANSFORM}")
+set_target_properties(nricp-file-tests PROPERTIES DEBUG_POSTFIX _d)
+
 # Copy final executables to bin directory
 file(MAKE_DIRECTORY ${BIN_DIR})
 add_custom_command(TARGET nonrigid-icp           POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nonrigid-icp>           ${BIN_DIR})
@@ -86,6 +102,38 @@ add_custom_command(TARGET nonrigid-icp-transform POST_BUILD COMMAND ${CMAKE_COMM
 
 # Enable testing
 enable_testing()
+
+add_test(
+    NAME nonrigid-icp.DataSmokeFit
+    COMMAND $<TARGET_FILE:nonrigid-icp>
+            -f ${CMAKE_SOURCE_DIR}/data/fixed_pc.csv
+            -m ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
+            -t ${NRICP_DATA_SMOKE_TRANSFORM}
+            -v 50
+            -b 1
+            -i 15
+            -w 0.01,0.01,0.01,0.01
+            -e 2.0
+            -n 35000
+            -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(
+    NAME nricp-file-tests.DataSmoke
+    COMMAND $<TARGET_FILE:nricp-file-tests>
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(nricp-file-tests.DataSmoke PROPERTIES DEPENDS nonrigid-icp.DataSmokeFit)
+
+add_test(
+    NAME nonrigid-icp.DataSmokeTransform
+    COMMAND $<TARGET_FILE:nonrigid-icp-transform>
+            -i ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
+            -o ${NRICP_DATA_SMOKE_TRANSFORMED}
+            -t ${NRICP_DATA_SMOKE_TRANSFORM}
+            -c 5000
+            -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(nonrigid-icp.DataSmokeTransform PROPERTIES DEPENDS nonrigid-icp.DataSmokeFit)
 
 # Add tests for the shell scripts
 add_test(

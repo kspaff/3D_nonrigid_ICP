@@ -1,29 +1,30 @@
 #include "pt_cloud.hpp"
 
+#include <cstring>
 #include <fstream>
 #include <iostream>
 
-PtCloud::PtCloud(Eigen::MatrixXd X) : X_{X} {}
+PtCloud::PtCloud(MatrixX X) : X_{X} {}
 
-void PtCloud::SetNormals(Eigen::VectorXd nx, Eigen::VectorXd ny, Eigen::VectorXd nz) {
+void PtCloud::SetNormals(VectorX nx, VectorX ny, VectorX nz) {
   nx_ = nx;
   ny_ = ny;
   nz_ = nz;
 }
 
-void PtCloud::SetCorrespondenceId(Eigen::VectorXd correspondence_id) {
+void PtCloud::SetCorrespondenceId(VectorX correspondence_id) {
   correspondence_id_ = correspondence_id;
 }
 
 long PtCloud::NumPts() { return X_.rows(); }
 
-void PtCloud::InitializeTranslationGrids(const double& voxel_size, const uint32_t& buffer_voxels,
-                                         const std::vector<double>& grid_limits) {
+void PtCloud::InitializeTranslationGrids(const Scalar& voxel_size, const uint32_t& buffer_voxels,
+                                         const std::vector<Scalar>& grid_limits) {
   // Check if grid_limits elements are all zero
   bool grid_limits_are_not_set =
-      std::all_of(grid_limits.begin(), grid_limits.end(), [](int i) { return i == 0; });
+      std::all_of(grid_limits.begin(), grid_limits.end(), [](Scalar i) { return i == 0; });
 
-  std::vector<double> grid_limits_with_buffer(6);
+  std::vector<Scalar> grid_limits_with_buffer(6);
   if (grid_limits_are_not_set) {
     grid_limits_with_buffer[0] = floor(x_min()) - buffer_voxels * voxel_size;
     grid_limits_with_buffer[1] = floor(y_min()) - buffer_voxels * voxel_size;
@@ -54,7 +55,7 @@ void PtCloud::InitializeTranslationGrids(const double& voxel_size, const uint32_
   int x_num_voxels = (grid_limits_with_buffer[3] - grid_limits_with_buffer[0]) / voxel_size;
   int y_num_voxels = (grid_limits_with_buffer[4] - grid_limits_with_buffer[1]) / voxel_size;
   int z_num_voxels = (grid_limits_with_buffer[5] - grid_limits_with_buffer[2]) / voxel_size;
-  Eigen::RowVector3d grid_origin{};
+  RowVector3 grid_origin{};
   grid_origin << grid_limits_with_buffer[0], grid_limits_with_buffer[1], grid_limits_with_buffer[2];
 
   int first_idx_adj{};
@@ -77,6 +78,10 @@ void PtCloud::ExportTranslationGrids(const std::string& filepath) {
   auto write_value = [](std::ofstream& file, const auto& value) {
     file.write(reinterpret_cast<const char*>(&value), sizeof(value));
   };
+  auto write_disk_scalar = [&](std::ofstream& file, const Scalar& value) {
+    const double disk_value{static_cast<double>(value)};
+    write_value(file, disk_value);
+  };
 
   // Open file
   std::ofstream file{filepath, std::ios::out | std::ios::binary};
@@ -89,13 +94,13 @@ void PtCloud::ExportTranslationGrids(const std::string& filepath) {
   HeaderInfo header_info;
   write_value(file, header_info.identifier);
   write_value(file, header_info.fileversion);
-  write_value(file, x_translation_grid_.grid_origin()(0));
-  write_value(file, x_translation_grid_.grid_origin()(1));
-  write_value(file, x_translation_grid_.grid_origin()(2));
+  write_disk_scalar(file, x_translation_grid_.grid_origin()(0));
+  write_disk_scalar(file, x_translation_grid_.grid_origin()(1));
+  write_disk_scalar(file, x_translation_grid_.grid_origin()(2));
   write_value(file, x_translation_grid_.x_num_voxels());
   write_value(file, x_translation_grid_.y_num_voxels());
   write_value(file, x_translation_grid_.z_num_voxels());
-  write_value(file, x_translation_grid_.voxel_size());
+  write_disk_scalar(file, x_translation_grid_.voxel_size());
   file.seekp(header_info.length);
 
   // Write data
@@ -104,32 +109,32 @@ void PtCloud::ExportTranslationGrids(const std::string& filepath) {
       for (int z_voxel_idx = 0; z_voxel_idx < x_translation_grid_.z_num_voxels() + 1;
            z_voxel_idx++) {
         // clang-format off
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].f);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz);
-        write_value(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].f);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz);
+        write_disk_scalar(file, x_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz);
 
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].f);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz);
-        write_value(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].f);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz);
+        write_disk_scalar(file, y_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz);
 
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].f);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz);
-        write_value(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].f);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz);
+        write_disk_scalar(file, z_translation_grid_.grid_vals()[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz);
         // clang-format on
       }
 
@@ -145,6 +150,11 @@ void PtCloud::ImportTranslationGrids(const std::string& filepath) {
   auto read_value = [](std::ifstream& file, auto& var) {
     file.read(reinterpret_cast<char*>(&var), sizeof(var));
   };
+  auto read_disk_scalar = [&](std::ifstream& file, Scalar& value) {
+    double disk_value{};
+    read_value(file, disk_value);
+    value = static_cast<Scalar>(disk_value);
+  };
 
   // Open file
   std::ifstream file{filepath, std::ios::in | std::ios::binary};
@@ -155,11 +165,11 @@ void PtCloud::ImportTranslationGrids(const std::string& filepath) {
 
   // Read header
   HeaderInfo header_info;
-  Eigen::RowVector3d grid_origin(3);
+  RowVector3 grid_origin;
   int x_num_voxels{};
   int y_num_voxels{};
   int z_num_voxels{};
-  double voxel_size{};
+  Scalar voxel_size{};
   read_value(file, header_info.identifier);
   if (strcmp(header_info.identifier, "nricp") != 0) {  // check identifier
     std::cerr << "Header of \"" << filepath << "\" does not start with char \"nricp\"!"
@@ -173,13 +183,13 @@ void PtCloud::ImportTranslationGrids(const std::string& filepath) {
               << "\", but should be \"" << current_fileversion << "\"!" << std::endl;
     exit(1);
   }
-  read_value(file, grid_origin(0));
-  read_value(file, grid_origin(1));
-  read_value(file, grid_origin(2));
+  read_disk_scalar(file, grid_origin(0));
+  read_disk_scalar(file, grid_origin(1));
+  read_disk_scalar(file, grid_origin(2));
   read_value(file, x_num_voxels);
   read_value(file, y_num_voxels);
   read_value(file, z_num_voxels);
-  read_value(file, voxel_size);
+  read_disk_scalar(file, voxel_size);
   file.seekg(header_info.length);
 
   // Verify header
@@ -209,36 +219,36 @@ void PtCloud::ImportTranslationGrids(const std::string& filepath) {
   for (int x_voxel_idx = 0; x_voxel_idx < x_num_voxels + 1; x_voxel_idx++)
     for (int y_voxel_idx = 0; y_voxel_idx < y_num_voxels + 1; y_voxel_idx++)
       for (int z_voxel_idx = 0; z_voxel_idx < z_num_voxels + 1; z_voxel_idx++) {
-        read_value(file, grid_vals_new.f);
-        read_value(file, grid_vals_new.fx);
-        read_value(file, grid_vals_new.fy);
-        read_value(file, grid_vals_new.fz);
-        read_value(file, grid_vals_new.fxy);
-        read_value(file, grid_vals_new.fxz);
-        read_value(file, grid_vals_new.fyz);
-        read_value(file, grid_vals_new.fxyz);
+        read_disk_scalar(file, grid_vals_new.f);
+        read_disk_scalar(file, grid_vals_new.fx);
+        read_disk_scalar(file, grid_vals_new.fy);
+        read_disk_scalar(file, grid_vals_new.fz);
+        read_disk_scalar(file, grid_vals_new.fxy);
+        read_disk_scalar(file, grid_vals_new.fxz);
+        read_disk_scalar(file, grid_vals_new.fyz);
+        read_disk_scalar(file, grid_vals_new.fxyz);
         x_translation_grid().UpdateVoxelGridVals(x_voxel_idx, y_voxel_idx, z_voxel_idx,
                                                  grid_vals_new);
 
-        read_value(file, grid_vals_new.f);
-        read_value(file, grid_vals_new.fx);
-        read_value(file, grid_vals_new.fy);
-        read_value(file, grid_vals_new.fz);
-        read_value(file, grid_vals_new.fxy);
-        read_value(file, grid_vals_new.fxz);
-        read_value(file, grid_vals_new.fyz);
-        read_value(file, grid_vals_new.fxyz);
+        read_disk_scalar(file, grid_vals_new.f);
+        read_disk_scalar(file, grid_vals_new.fx);
+        read_disk_scalar(file, grid_vals_new.fy);
+        read_disk_scalar(file, grid_vals_new.fz);
+        read_disk_scalar(file, grid_vals_new.fxy);
+        read_disk_scalar(file, grid_vals_new.fxz);
+        read_disk_scalar(file, grid_vals_new.fyz);
+        read_disk_scalar(file, grid_vals_new.fxyz);
         y_translation_grid().UpdateVoxelGridVals(x_voxel_idx, y_voxel_idx, z_voxel_idx,
                                                  grid_vals_new);
 
-        read_value(file, grid_vals_new.f);
-        read_value(file, grid_vals_new.fx);
-        read_value(file, grid_vals_new.fy);
-        read_value(file, grid_vals_new.fz);
-        read_value(file, grid_vals_new.fxy);
-        read_value(file, grid_vals_new.fxz);
-        read_value(file, grid_vals_new.fyz);
-        read_value(file, grid_vals_new.fxyz);
+        read_disk_scalar(file, grid_vals_new.f);
+        read_disk_scalar(file, grid_vals_new.fx);
+        read_disk_scalar(file, grid_vals_new.fy);
+        read_disk_scalar(file, grid_vals_new.fz);
+        read_disk_scalar(file, grid_vals_new.fxy);
+        read_disk_scalar(file, grid_vals_new.fxz);
+        read_disk_scalar(file, grid_vals_new.fyz);
+        read_disk_scalar(file, grid_vals_new.fxyz);
         z_translation_grid().UpdateVoxelGridVals(x_voxel_idx, y_voxel_idx, z_voxel_idx,
                                                  grid_vals_new);
       }
@@ -263,23 +273,23 @@ void PtCloud::UpdateXt() {
   auto ty{y_translation_grid_.p(X_, X_power_, X_voxel_idx_)};
   auto tz{z_translation_grid_.p(X_, X_power_, X_voxel_idx_)};
 
-  Xt_ = Eigen::MatrixX3d(NumPts(), 3);
+  Xt_ = MatrixX3(NumPts(), 3);
   Xt_ << X_.col(0) + tx, X_.col(1) + ty, X_.col(2) + tz;
 }
 
-const Eigen::MatrixXd& PtCloud::X() { return X_; }
-const Eigen::MatrixXd& PtCloud::Xt() { return Xt_; }
-const Eigen::VectorXd& PtCloud::nx() { return nx_; }
-const Eigen::VectorXd& PtCloud::ny() { return ny_; }
-const Eigen::VectorXd& PtCloud::nz() { return nz_; }
-const Eigen::VectorXd& PtCloud::correspondence_id() { return correspondence_id_; }
+const MatrixX& PtCloud::X() { return X_; }
+const MatrixX& PtCloud::Xt() { return Xt_; }
+const VectorX& PtCloud::nx() { return nx_; }
+const VectorX& PtCloud::ny() { return ny_; }
+const VectorX& PtCloud::nz() { return nz_; }
+const VectorX& PtCloud::correspondence_id() { return correspondence_id_; }
 
 TranslationGrid& PtCloud::x_translation_grid() { return x_translation_grid_; }
 TranslationGrid& PtCloud::y_translation_grid() { return y_translation_grid_; }
 TranslationGrid& PtCloud::z_translation_grid() { return z_translation_grid_; }
-double PtCloud::x_min() { return X_.col(0).minCoeff(); }
-double PtCloud::x_max() { return X_.col(0).maxCoeff(); }
-double PtCloud::y_min() { return X_.col(1).minCoeff(); }
-double PtCloud::y_max() { return X_.col(1).maxCoeff(); }
-double PtCloud::z_min() { return X_.col(2).minCoeff(); }
-double PtCloud::z_max() { return X_.col(2).maxCoeff(); }
+Scalar PtCloud::x_min() { return X_.col(0).minCoeff(); }
+Scalar PtCloud::x_max() { return X_.col(0).maxCoeff(); }
+Scalar PtCloud::y_min() { return X_.col(1).minCoeff(); }
+Scalar PtCloud::y_max() { return X_.col(1).maxCoeff(); }
+Scalar PtCloud::z_min() { return X_.col(2).minCoeff(); }
+Scalar PtCloud::z_max() { return X_.col(2).maxCoeff(); }

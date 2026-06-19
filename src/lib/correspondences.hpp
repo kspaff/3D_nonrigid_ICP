@@ -7,7 +7,7 @@
 #include "pt_cloud.hpp"
 
 struct Dists {
-  Eigen::VectorXd dists{};
+  VectorX dists{};
   double mean{NAN};
   double median{NAN};
   double std{NAN};
@@ -16,12 +16,12 @@ struct Dists {
 
 struct CorrespondencesPointsWithAttributes {
   int num{};
-  Eigen::MatrixX3d pc_fix_X{};
-  Eigen::VectorXd pc_fix_nx{};
-  Eigen::VectorXd pc_fix_ny{};
-  Eigen::VectorXd pc_fix_nz{};
-  Eigen::MatrixX3d pc_mov_X{};
-  Eigen::MatrixX3d pc_mov_Xt{};
+  MatrixX3 pc_fix_X{};
+  VectorX pc_fix_nx{};
+  VectorX pc_fix_ny{};
+  VectorX pc_fix_nz{};
+  MatrixX3 pc_mov_X{};
+  MatrixX3 pc_mov_Xt{};
 };
 
 class Correspondences {
@@ -30,7 +30,7 @@ class Correspondences {
   void SelectPointsByRandomSampling(const uint32_t& num_correspondences);
   void MatchPointsByNearestNeighbor();
   void MatchPointsByCorrespondenceId();
-  void RejectMaxEuclideanDistanceCriteria(const double& max_euclidean_distance);
+  void RejectMaxEuclideanDistanceCriteria(const Scalar& max_euclidean_distance);
   void RejectStdMadCriteria();
   CorrespondencesPointsWithAttributes GetCorrespondences();
   void ComputeDists();
@@ -48,8 +48,8 @@ class Correspondences {
   std::vector<int> GetSelectedPoints();
 
  private:
-  Eigen::MatrixXd GetSelectedPoints_();
-  Eigen::MatrixXd GetSelectedCorrespondenceIds_();
+  MatrixX GetSelectedPoints_();
+  MatrixX GetSelectedCorrespondenceIds_();
 
   PtCloud& pc_fix_;
   PtCloud& pc_mov_;
@@ -61,7 +61,7 @@ class Correspondences {
   Dists euclidean_dists_t_;
 };
 
-Eigen::MatrixXi KnnSearch(const Eigen::MatrixXd& X, const Eigen::MatrixXd& X_query,
+Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query,
                           const int& k = 1);
 
 template <typename T>
@@ -69,12 +69,12 @@ std::vector<T> KeepSubsetOfVector(const std::vector<T>& old_vector, const std::v
 
 std::vector<int> RandInt(const int& min_val, const int& max_val, const uint32_t& n);
 
-double Median(const Eigen::VectorXd& v);
+double Median(const VectorX& v);
 
 // Median of absolute differences (mad) with respect to the median
-double MAD(const Eigen::VectorXd& v);
+double MAD(const VectorX& v);
 
-double Std(const Eigen::VectorXd& v);
+double Std(const VectorX& v);
 
 template <typename T>
 std::vector<T> Range(T start, T stop, T step = 1);
