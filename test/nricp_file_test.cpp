@@ -9,6 +9,7 @@
 #include <type_traits>
 
 #include "src/lib/io_utils.hpp"
+#include "src/lib/correspondences.hpp"
 #include "src/lib/pt_cloud.hpp"
 #include "src/lib/scalar_types.hpp"
 
@@ -257,6 +258,17 @@ TEST(NricpDataSmoke, GeneratedFileCanBeImportedAndApplied) {
   const Scalar max_displacement = (cloud.Xt() - cloud.X()).rowwise().norm().maxCoeff();
   EXPECT_GT(max_displacement, Scalar{0});
   EXPECT_LT(max_displacement, Scalar{10});
+}
+
+TEST(CorrespondenceStats, MedianAndMadIncludeFirstElement) {
+  VectorX median_values(3);
+  median_values << Scalar{10}, Scalar{1}, Scalar{2};
+  EXPECT_DOUBLE_EQ(Median(median_values), 2.0);
+
+  VectorX mad_values(3);
+  mad_values << Scalar{100}, Scalar{101}, Scalar{0};
+  EXPECT_DOUBLE_EQ(Median(mad_values), 100.0);
+  EXPECT_DOUBLE_EQ(MAD(mad_values), 1.0);
 }
 
 TEST(TranslationGridBasis, HermiteWeightsMatchReferenceMatrixEvaluator) {

@@ -222,7 +222,7 @@ Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k
   // Create kd tree
   typedef nanoflann::KDTreeEigenMatrixAdaptor<MatrixX>
       kd_tree;
-  kd_tree mat_index(X.cols(), std::cref(X), LEAF_SIZE);
+  kd_tree mat_index(static_cast<int>(X.cols()), std::cref(X), LEAF_SIZE);
 
   // Iterate over all query points
   Eigen::MatrixXi mat_idx_nn(X_query.rows(), k);
@@ -240,7 +240,7 @@ Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k
 
     // Save indices of nn to matrix
     for (int j = 0; j < k; j++) {
-      mat_idx_nn(i, j) = idx_nn[j];
+      mat_idx_nn(i, j) = static_cast<int>(idx_nn[j]);
     }
   }
   return mat_idx_nn;
@@ -271,7 +271,7 @@ std::vector<int> RandInt(const int& min_val, const int& max_val, const uint32_t&
 double Median(const VectorX& v) {
   // VectorX --> vector<double>
   std::vector<double> vv(v.size());
-  for (int i = 1; i < v.size(); i++) {
+  for (int i = 0; i < v.size(); i++) {
     vv[i] = v[i];
   }
 
@@ -286,8 +286,8 @@ double Median(const VectorX& v) {
 double MAD(const VectorX& v) {
   auto med{Median(v)};
   VectorX dmed(v.size());
-  for (int i = 1; i < v.size(); i++) {
-    dmed[i] = abs(v[i] - med);
+  for (int i = 0; i < v.size(); i++) {
+    dmed[i] = static_cast<Scalar>(std::abs(static_cast<double>(v[i]) - med));
   }
   auto mad{Median(dmed)};
   return mad;

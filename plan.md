@@ -1708,6 +1708,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Verification after the direct-ridge CG optimizer: `Release|x64` solution build succeeds with 2 existing executable warnings and 0 errors. The locked smoke chain passes with regenerated output: `ctest -C Release -R "nonrigid-icp.DataSmokeFit|nricp-file-tests.DataSmoke|nonrigid-icp.DataSmokeTransform" --output-on-failure` passes 3/3 in 10.48 s. Profiling run with the locked parameters wrote `build/results/profile_after_section19_direct_ridge_cg.nricp` and finished in 10.098 s. Optimization timing improved from the Hermite-only mean 1,062.5 ms to 634.8 ms; the pre-Section-19 timing sample was 1,185.8 ms.
 - 2026-06-19: Direct-ridge CG optimizer committed locally as `f39b11459e3471faad0d0903e83499fd23efe92d` (`Use direct ridge CG solve for fitting`).
 - 2026-06-19: Section 19 active-unknown compact-solve attempt documented and backed out, then committed locally as `4d1143c2a0bd83aeecae468a1ac5ba94bdb8be36` (`Document active unknown solve attempt`). Verification after the backout: the locked smoke chain passed 3/3 in 10.78 s.
+- 2026-06-19: Fixed Section 19's median/MAD skipped-first-element bug in the CPU reference path and added a focused regression test that fails if element zero is ignored. Also cleaned up the resulting MSVC conversion warnings in `correspondences.cpp`. Verification: `Release|x64` solution build succeeds with 0 warnings and 0 errors; the locked smoke/golden/transform chain passes 3/3 in 10.09 s.
 
 ## Abandoned
 
