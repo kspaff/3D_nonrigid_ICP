@@ -1729,6 +1729,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Added Section 19 validation coverage for deterministic 15-iteration fitting. `nonrigid-icp.DataSmokeFitRepeat` now reruns the locked original fixed/moving registration to a second `.nricp`, and `nricp-file-tests.DataSmoke` verifies the repeat output matches the primary generated fit with exact hash first and the existing `1e-4` payload epsilon fallback. Verification: `Release|x64` build succeeds with 0 warnings and 0 errors; the selected locked suite passes 15/15 in 73.35 s.
 - 2026-06-19: Deterministic repeat fitting milestone committed locally as `368aaed0e4795e5ed49937817516d68c6dfffec2` (`Cover deterministic repeat fitting`).
 - 2026-06-19: Added Section 19 validation coverage for fixed-profile correspondence sampling limits. `RandInt()` now accepts a one-point inclusive range, which lets the fixed `35000` requested correspondences select all available points for clouds with one point instead of throwing. Focused tests now verify oversized requests select all available fixed points in sorted order, partial sampling is deterministic and sorted, and zero requested correspondences is rejected. Verification: `Release|x64` build succeeds with 0 warnings and 0 errors; the selected locked suite passes 15/15 in 71.41 s.
+- 2026-06-19: Correspondence sampling limit validation committed locally as `45d9718448c61925612e1dfe58df1a9718ee443d` (`Cover correspondence sampling limits`).
 
 ## Abandoned
 
