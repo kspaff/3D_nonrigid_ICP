@@ -1711,6 +1711,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Fixed Section 19's median/MAD skipped-first-element bug in the CPU reference path and added a focused regression test that fails if element zero is ignored. Also cleaned up the resulting MSVC conversion warnings in `correspondences.cpp`. Verification: `Release|x64` solution build succeeds with 0 warnings and 0 errors; the locked smoke/golden/transform chain passes 3/3 in 10.09 s.
 - 2026-06-19: Median/MAD correctness milestone committed locally as `dac2137ef217cc1629beb247d19ad9ef80adeac5` (`Fix correspondence median MAD stats`).
 - 2026-06-19: Implemented Section 19's fused x/y/z transformation evaluator for `PtCloud::UpdateXt()`. The method now walks each point once, reuses the cached Hermite weights and voxel reference, gathers all three displacement grids in the same channel/corner order as `.nricp` v1, and avoids three separate `TranslationGrid::p()` passes. Verification: `Release|x64` solution build succeeds with 0 warnings and 0 errors; the locked smoke/golden/transform chain passes 3/3 in 9.97 s. Profiling run with the locked parameters wrote `build/results/profile_after_section19_fused_updatext.nricp` and finished in 9.541 s; optimization timing improved from the direct-ridge CG mean 634.8 ms to 595.3 ms.
+- 2026-06-19: Fused transform evaluator milestone committed locally as `dfe045b149f49bfd54725fdc36e205f14c4bbc2b` (`Fuse point cloud transform evaluation`).
 
 ## Abandoned
 
