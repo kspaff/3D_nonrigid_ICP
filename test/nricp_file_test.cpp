@@ -485,6 +485,42 @@ TEST(CorrespondenceMatching, MaxEuclideanDistanceKeepsValuesAtThreshold) {
   EXPECT_LE(correspondences.euclidean_dists_t().dists.maxCoeff(), Scalar{2});
 }
 
+TEST(CorrespondenceMatching, PreservesOriginalMovingCoordinatesAfterTransformUpdate) {
+  MatrixX3 fixed_points(1, 3);
+  fixed_points << Scalar{1}, Scalar{0}, Scalar{0};
+  MatrixX3 moving_points(1, 3);
+  moving_points << Scalar{0}, Scalar{0}, Scalar{0};
+
+  PtCloud fixed{fixed_points};
+  PtCloud moving{moving_points};
+  VectorX normal_x = VectorX::Ones(1);
+  VectorX normal_y = VectorX::Zero(1);
+  VectorX normal_z = VectorX::Zero(1);
+  fixed.SetNormals(normal_x, normal_y, normal_z);
+  VectorX ids(1);
+  ids << Scalar{1};
+  fixed.SetCorrespondenceId(ids);
+  moving.SetCorrespondenceId(ids);
+
+  moving.InitializeTranslationGrids(Scalar{1}, 0, {0, 0, 0, 1, 1, 1});
+  GridVals x_corner_displacement{};
+  x_corner_displacement.f = Scalar{1};
+  moving.x_translation_grid().UpdateVoxelGridVals(0, 0, 0, x_corner_displacement);
+  moving.InitMatricesForUpdateXt();
+  moving.UpdateXt();
+
+  Correspondences correspondences{fixed, moving};
+  correspondences.SelectPointsByRandomSampling(1);
+  correspondences.MatchPointsByCorrespondenceId();
+  const auto matched = correspondences.GetCorrespondences();
+
+  ASSERT_EQ(matched.num, 1);
+  EXPECT_EQ(matched.pc_mov_X(0, 0), Scalar{0});
+  EXPECT_EQ(matched.pc_mov_Xt(0, 0), Scalar{1});
+  EXPECT_EQ(correspondences.point_to_plane_dists().dists(0), Scalar{-1});
+  EXPECT_EQ(correspondences.point_to_plane_dists_t().dists(0), Scalar{0});
+}
+
 TEST(TranslationGridBasis, HermiteWeightsMatchReferenceMatrixEvaluator) {
   TranslationGrid grid;
   RowVector3 origin{};
