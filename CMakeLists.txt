@@ -174,6 +174,34 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(nonrigid-icp.DataSmokeTransform PROPERTIES DEPENDS nonrigid-icp.DataSmokeFit)
 
+add_test(
+    NAME nonrigid-icp.GpuBackendNotImplemented
+    COMMAND $<TARGET_FILE:nonrigid-icp>
+            -f ${CMAKE_SOURCE_DIR}/data/fixed_pc.csv
+            -m ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
+            -t ${CMAKE_BINARY_DIR}/results/gpu_backend_not_implemented.nricp
+            -x gpu
+            -v 50
+            -b 1
+            -i 15
+            -w 0.01,0.01,0.01,0.01
+            -e 2.0
+            -n 35000
+            -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(nonrigid-icp.GpuBackendNotImplemented PROPERTIES WILL_FAIL TRUE)
+
+add_test(
+    NAME nonrigid-icp-transform.GpuBackendNotImplemented
+    COMMAND $<TARGET_FILE:nonrigid-icp-transform>
+            -i ${CMAKE_SOURCE_DIR}/data/moving_pc.csv
+            -o ${CMAKE_BINARY_DIR}/results/gpu_backend_not_implemented.csv
+            -t ${CMAKE_SOURCE_DIR}/test/golden/data_fixed_moving_v50_b1_i15_w001_e2_n35000.nricp
+            -x gpu
+            -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(nonrigid-icp-transform.GpuBackendNotImplemented PROPERTIES WILL_FAIL TRUE)
+
 # Add tests for the shell scripts
 add_test(
     NAME nonrigid-icp.EagleScript

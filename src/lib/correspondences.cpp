@@ -219,6 +219,13 @@ void Correspondences::ComputeDists() {
 }
 
 Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k) {
+  if (k <= 0) {
+    throw std::invalid_argument("k must be > 0");
+  }
+  if (X.cols() != X_query.cols()) {
+    throw std::invalid_argument("KnnSearch input and query dimensions must match");
+  }
+
   // Create kd tree
   typedef nanoflann::KDTreeEigenMatrixAdaptor<MatrixX>
       kd_tree;
@@ -226,17 +233,19 @@ Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k
 
   // Iterate over all query points
   Eigen::MatrixXi mat_idx_nn(X_query.rows(), k);
+  std::vector<Scalar> query_point(static_cast<size_t>(X_query.cols()));
+  std::vector<size_t> idx_nn(static_cast<size_t>(k));
+  std::vector<Scalar> dists_nn(static_cast<size_t>(k));
   for (Eigen::Index i = 0; i < X_query.rows(); i++) {
-    // Query point
-    VectorX row = X_query.row(i);
-    std::vector<Scalar> qp{row.data(), row.data() + row.size()};
+    for (Eigen::Index dim = 0; dim < X_query.cols(); ++dim) {
+      query_point[static_cast<size_t>(dim)] = X_query(i, dim);
+    }
 
     // Search for nn of query point
-    std::vector<size_t> idx_nn(k);
-    std::vector<Scalar> dists_nn(k);  // not used
     nanoflann::KNNResultSet<Scalar> resultSet(k);
-    resultSet.init(&idx_nn[0], &dists_nn[0]);
-    mat_index.index_->findNeighbors(resultSet, &qp[0], nanoflann::SearchParameters(10));
+    resultSet.init(idx_nn.data(), dists_nn.data());
+    mat_index.index_->findNeighbors(resultSet, query_point.data(),
+                                    nanoflann::SearchParameters(10));
 
     // Save indices of nn to matrix
     for (int j = 0; j < k; j++) {

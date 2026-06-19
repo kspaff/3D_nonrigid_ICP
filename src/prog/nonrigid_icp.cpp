@@ -31,6 +31,7 @@ struct Params {
   std::string fixed;
   std::string movable;
   std::string transform;
+  std::string execution_backend;
   Scalar voxel_size;
   std::vector<Scalar> grid_limits;
   uint32_t buffer_voxels;
@@ -229,6 +230,10 @@ Params ParseUserInputs(int argc, char** argv) {
     "the movable point cloud. The executable \"nonrigid-icp-transform\" can be used to transform a "
     "point cloud with this transform file.",
     cxxopts::value<std::string>())
+    ("x,execution_backend",
+    "Execution backend. Available modes are \"cpu\" and \"gpu\". The GPU backend is reserved for "
+    "future CUDA work; CPU is the current optimized implementation.",
+    cxxopts::value<std::string>()->default_value("cpu"))
     ("v,voxel_size",
     "Voxel size of translation grids",
     cxxopts::value<Scalar>()->default_value("1"))
@@ -287,6 +292,7 @@ Params ParseUserInputs(int argc, char** argv) {
   params.fixed = result["fixed"].as<std::string>();
   params.movable = result["movable"].as<std::string>();
   params.transform = result["transform"].as<std::string>();
+  params.execution_backend = result["execution_backend"].as<std::string>();
   params.voxel_size = result["voxel_size"].as<Scalar>();
   params.grid_limits = result["grid_limits"].as<std::vector<Scalar>>();
   params.buffer_voxels = result["buffer_voxels"].as<uint32_t>();
@@ -298,6 +304,17 @@ Params ParseUserInputs(int argc, char** argv) {
   params.debug_dir = result["debug_dir"].as<std::string>();
   params.suppress_logging = result["suppress_logging"].as<bool>();
   params.profiling = result["profiling"].as<bool>();
+
+  if (params.execution_backend != "cpu" && params.execution_backend != "gpu") {
+    std::string error_string =
+        "Execution backend \"" + params.execution_backend + "\" is not available!";
+    throw std::runtime_error(error_string);
+  }
+
+  if (params.execution_backend == "gpu") {
+    throw std::runtime_error(
+        "GPU execution backend is not implemented yet; rerun with --execution_backend cpu.");
+  }
 
   if (params.matching_mode == "id") {
     params.num_iterations = 1;

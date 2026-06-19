@@ -313,6 +313,26 @@ TEST(CorrespondenceStats, MedianAndMadIncludeFirstElement) {
   EXPECT_DOUBLE_EQ(MAD(mad_values), 1.0);
 }
 
+TEST(CorrespondenceMatching, KnnSearchFindsExactNearestNeighbors) {
+  MatrixX points(4, 3);
+  points << Scalar{0}, Scalar{0}, Scalar{0},
+      Scalar{2}, Scalar{0}, Scalar{0},
+      Scalar{0}, Scalar{3}, Scalar{0},
+      Scalar{0}, Scalar{0}, Scalar{4};
+
+  MatrixX queries(3, 3);
+  queries << Scalar{1.75f}, Scalar{0.1f}, Scalar{0},
+      Scalar{0.1f}, Scalar{2.75f}, Scalar{0},
+      Scalar{0}, Scalar{0.1f}, Scalar{3.75f};
+
+  const auto idx = KnnSearch(points, queries, 1);
+  ASSERT_EQ(idx.rows(), 3);
+  ASSERT_EQ(idx.cols(), 1);
+  EXPECT_EQ(idx(0, 0), 1);
+  EXPECT_EQ(idx(1, 0), 2);
+  EXPECT_EQ(idx(2, 0), 3);
+}
+
 TEST(TranslationGridBasis, HermiteWeightsMatchReferenceMatrixEvaluator) {
   TranslationGrid grid;
   RowVector3 origin{};
