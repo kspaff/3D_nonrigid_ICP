@@ -87,6 +87,10 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
   normal_matrix.makeCompressed();
 
   const VectorX rhs{J.transpose() * (-correspondences.point_to_plane_dists().dists)};
+  VectorX initial_guess{VectorX::Zero(num_unknowns)};
+  correspondences.pc_mov().x_translation_grid().CopyAllGridValsToVector(initial_guess);
+  correspondences.pc_mov().y_translation_grid().CopyAllGridValsToVector(initial_guess);
+  correspondences.pc_mov().z_translation_grid().CopyAllGridValsToVector(initial_guess);
 
   // Solve!
   VectorX xhat(num_unknowns);
@@ -96,7 +100,7 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
     optimization_results.success = false;
     return optimization_results;
   }
-  xhat = solver.solve(rhs);
+  xhat = solver.solveWithGuess(rhs, initial_guess);
   if (solver.info() != Eigen::Success) {
     optimization_results.success = false;
     return optimization_results;

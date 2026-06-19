@@ -1,5 +1,6 @@
 #include "translation_grid.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -129,7 +130,7 @@ void TranslationGrid::Initialize(const RowVector3& grid_origin, const int& x_num
 
   for (int row = 0; row < 64; row++)
     for (int col = 0; col < 64; col++) {
-      inv_A_(row, col) = inv_A_array[row][col];
+      inv_A_(row, col) = static_cast<Scalar>(inv_A_array[row][col]);
     }
 }
 
@@ -148,9 +149,9 @@ std::tuple<Eigen::MatrixX3i, MatrixX3> TranslationGrid::GetGridReference(
     X_grid(1) = X(i, 1) - grid_origin_(1);
     X_grid(2) = X(i, 2) - grid_origin_(2);
 
-    X_voxel_idx(i, 0) = floor(X_grid(0) / voxel_size_);
-    X_voxel_idx(i, 1) = floor(X_grid(1) / voxel_size_);
-    X_voxel_idx(i, 2) = floor(X_grid(2) / voxel_size_);
+    X_voxel_idx(i, 0) = static_cast<int>(std::floor(X_grid(0) / voxel_size_));
+    X_voxel_idx(i, 1) = static_cast<int>(std::floor(X_grid(1) / voxel_size_));
+    X_voxel_idx(i, 2) = static_cast<int>(std::floor(X_grid(2) / voxel_size_));
 
     // Check bounds and handle points outside the transformation domain
     if (X_voxel_idx(i, 0) < 0 || X_voxel_idx(i, 0) >= x_num_voxels_ || X_voxel_idx(i, 1) < 0 ||
@@ -320,6 +321,33 @@ std::vector<Triplet> TranslationGrid::J(const MatrixX3& X) {
   }
 
   return triplets;
+}
+
+void TranslationGrid::CopyAllGridValsToVector(VectorX& grid_vals_vector) const {
+  if (grid_vals_vector.size() <= max_idx_adj_) {
+    throw std::invalid_argument("grid_vals_vector is too small for this translation grid");
+  }
+
+  for (int x_voxel_idx = 0; x_voxel_idx < x_num_voxels_ + 1; x_voxel_idx++)
+    for (int y_voxel_idx = 0; y_voxel_idx < y_num_voxels_ + 1; y_voxel_idx++)
+      for (int z_voxel_idx = 0; z_voxel_idx < z_num_voxels_ + 1; z_voxel_idx++) {
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].f) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].f;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fx;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fy;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fz;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxy;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxz;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fyz;
+        grid_vals_vector(grid_idx_adj_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz) =
+            grid_vals_[x_voxel_idx][y_voxel_idx][z_voxel_idx].fxyz;
+      }
 }
 
 void TranslationGrid::UpdateAllGridValsFromVector(const VectorX& grid_vals_new) {

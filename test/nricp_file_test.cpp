@@ -319,3 +319,47 @@ TEST(TranslationGridBasis, HermiteWeightsMatchReferenceMatrixEvaluator) {
     EXPECT_NEAR(reference(i), hermite_value, 1e-5f) << "point index " << i;
   }
 }
+
+TEST(TranslationGridBasis, CopyAllGridValsToVectorUsesGlobalIndices) {
+  RowVector3 origin{};
+  origin << Scalar{0}, Scalar{0}, Scalar{0};
+
+  TranslationGrid x_grid;
+  TranslationGrid y_grid;
+  x_grid.Initialize(origin, 1, 1, 1, Scalar{1}, 0);
+  y_grid.Initialize(origin, 1, 1, 1, Scalar{1}, x_grid.num_grid_vals());
+
+  GridVals x_vals{};
+  x_vals.f = Scalar{1};
+  x_vals.fx = Scalar{2};
+  x_vals.fy = Scalar{3};
+  x_vals.fz = Scalar{4};
+  x_vals.fxy = Scalar{5};
+  x_vals.fxz = Scalar{6};
+  x_vals.fyz = Scalar{7};
+  x_vals.fxyz = Scalar{8};
+  x_grid.UpdateVoxelGridVals(0, 0, 0, x_vals);
+
+  GridVals y_vals{};
+  y_vals.f = Scalar{9};
+  y_vals.fx = Scalar{10};
+  y_vals.fy = Scalar{11};
+  y_vals.fz = Scalar{12};
+  y_vals.fxy = Scalar{13};
+  y_vals.fxz = Scalar{14};
+  y_vals.fyz = Scalar{15};
+  y_vals.fxyz = Scalar{16};
+  y_grid.UpdateVoxelGridVals(0, 0, 0, y_vals);
+
+  VectorX coefficients = VectorX::Constant(x_grid.num_grid_vals() + y_grid.num_grid_vals(),
+                                           Scalar{-1});
+  x_grid.CopyAllGridValsToVector(coefficients);
+  y_grid.CopyAllGridValsToVector(coefficients);
+
+  EXPECT_EQ(coefficients(0), Scalar{1});
+  EXPECT_EQ(coefficients(1), Scalar{2});
+  EXPECT_EQ(coefficients(7), Scalar{8});
+  EXPECT_EQ(coefficients(x_grid.num_grid_vals()), Scalar{9});
+  EXPECT_EQ(coefficients(x_grid.num_grid_vals() + 1), Scalar{10});
+  EXPECT_EQ(coefficients(x_grid.num_grid_vals() + 7), Scalar{16});
+}

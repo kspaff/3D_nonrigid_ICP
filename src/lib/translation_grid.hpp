@@ -43,6 +43,7 @@ class TranslationGrid {
   VectorX p(const MatrixX3& X, const MatrixX64& X_weights,
             const Eigen::MatrixX3i& X_voxel_idx);
   std::vector<Triplet> J(const MatrixX3& X);
+  void CopyAllGridValsToVector(VectorX& grid_vals_vector) const;
   void UpdateAllGridValsFromVector(const VectorX& grid_vals_new);
   void UpdateVoxelGridVals(const int& x_voxel_idx, const int& y_voxel_idx, const int& z_voxel_idx,
                            const GridVals grid_vals_new);

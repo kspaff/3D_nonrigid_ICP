@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
+#include <cstdio>
 #include <cxxopts.hpp>
 #include <iostream>
 
@@ -158,13 +159,13 @@ int main(int argc, char** argv)
 
       if (debug_mode) {
         char it_string[100];
-        std::sprintf(it_string, "%03d", iteration_results.it);
+        std::snprintf(it_string, sizeof(it_string), "%03d", iteration_results.it);
         auto debug_file_name =
             params.debug_dir + "correspondences_it" + std::string(it_string) + ".poly";
         correspondences.ExportCorrespondences(debug_file_name);
       }
 
-      iteration_results.correspondences_results.num = correspondences.num();
+      iteration_results.correspondences_results.num = static_cast<int>(correspondences.num());
       iteration_results.correspondences_results.mean_point_to_plane_dists_before_optimization =
           correspondences.point_to_plane_dists_t().mean;
       iteration_results.correspondences_results.std_point_to_plane_dists_before_optimization =
