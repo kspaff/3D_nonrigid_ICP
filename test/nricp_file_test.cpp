@@ -12,8 +12,8 @@
 #include <type_traits>
 #include <vector>
 
-#include "src/lib/io_utils.hpp"
 #include "src/lib/correspondences.hpp"
+#include "src/lib/io_utils.hpp"
 #include "src/lib/optimization.hpp"
 #include "src/lib/pt_cloud.hpp"
 #include "src/lib/scalar_types.hpp"
@@ -122,8 +122,8 @@ testing::AssertionResult NricpFilesNear(const std::filesystem::path& actual_path
     return testing::AssertionFailure() << "actual file does not exist: " << actual_path.string();
   }
   if (!std::filesystem::exists(expected_path)) {
-    return testing::AssertionFailure() << "expected file does not exist: "
-                                       << expected_path.string();
+    return testing::AssertionFailure()
+           << "expected file does not exist: " << expected_path.string();
   }
   if (std::filesystem::file_size(actual_path) != std::filesystem::file_size(expected_path)) {
     return testing::AssertionFailure()
@@ -155,8 +155,8 @@ testing::AssertionResult NricpFilesNear(const std::filesystem::path& actual_path
       !header_double_near(actual_header.origin_y, expected_header.origin_y) ||
       !header_double_near(actual_header.origin_z, expected_header.origin_z) ||
       !header_double_near(actual_header.voxel_size, expected_header.voxel_size)) {
-    return testing::AssertionFailure() << "floating .nricp header fields differ by more than "
-                                       << epsilon;
+    return testing::AssertionFailure()
+           << "floating .nricp header fields differ by more than " << epsilon;
   }
 
   const std::uintmax_t payload_bytes = std::filesystem::file_size(actual_path) - kHeaderBytes;
@@ -358,7 +358,8 @@ TEST(NricpTransformOutputs, ChunkedAndSingleChunkOutputsMatchExactly) {
   const std::filesystem::path single_chunk_path{NRICP_SMOKE_TRANSFORMED_SINGLE_CHUNK};
   ASSERT_TRUE(std::filesystem::exists(chunked_path));
   ASSERT_TRUE(std::filesystem::exists(single_chunk_path));
-  EXPECT_EQ(std::filesystem::file_size(chunked_path), std::filesystem::file_size(single_chunk_path));
+  EXPECT_EQ(std::filesystem::file_size(chunked_path),
+            std::filesystem::file_size(single_chunk_path));
   EXPECT_EQ(HashFileFnv1a64(chunked_path), HashFileFnv1a64(single_chunk_path));
 }
 
@@ -382,13 +383,11 @@ TEST(CorrespondenceSampling, SelectsSinglePointWhenRequestExceedsCloudSize) {
 
 TEST(CorrespondenceSampling, SelectsAllFixedPointsWhenRequestExceedsCloudSize) {
   MatrixX3 fixed_points(3, 3);
-  fixed_points << Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{1}, Scalar{0}, Scalar{0},
-      Scalar{2}, Scalar{0}, Scalar{0};
+  fixed_points << Scalar{0}, Scalar{0}, Scalar{0}, Scalar{1}, Scalar{0}, Scalar{0}, Scalar{2},
+      Scalar{0}, Scalar{0};
   MatrixX3 moving_points(3, 3);
-  moving_points << Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{1}, Scalar{0}, Scalar{0},
-      Scalar{2}, Scalar{0}, Scalar{0};
+  moving_points << Scalar{0}, Scalar{0}, Scalar{0}, Scalar{1}, Scalar{0}, Scalar{0}, Scalar{2},
+      Scalar{0}, Scalar{0};
 
   PtCloud fixed{fixed_points};
   PtCloud moving{moving_points};
@@ -420,9 +419,8 @@ TEST(CorrespondenceSampling, RejectsZeroRequestedCorrespondences) {
 }
 
 TEST(OptimizationRegularization, EqualWeightsBuildUniformRidgeDiagonal) {
-  const auto regularization =
-      BuildZeroObservationWeights(48, 16, {Scalar{0.01f}, Scalar{0.01f}, Scalar{0.01f},
-                                           Scalar{0.01f}});
+  const auto regularization = BuildZeroObservationWeights(
+      48, 16, {Scalar{0.01f}, Scalar{0.01f}, Scalar{0.01f}, Scalar{0.01f}});
 
   ASSERT_EQ(regularization.size(), 48);
   for (Eigen::Index i = 0; i < regularization.size(); ++i) {
@@ -448,14 +446,11 @@ TEST(OptimizationRegularization, RejectsNonFourWeightVector) {
 
 TEST(CorrespondenceMatching, KnnSearchFindsExactNearestNeighbors) {
   MatrixX points(4, 3);
-  points << Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{2}, Scalar{0}, Scalar{0},
-      Scalar{0}, Scalar{3}, Scalar{0},
-      Scalar{0}, Scalar{0}, Scalar{4};
+  points << Scalar{0}, Scalar{0}, Scalar{0}, Scalar{2}, Scalar{0}, Scalar{0}, Scalar{0}, Scalar{3},
+      Scalar{0}, Scalar{0}, Scalar{0}, Scalar{4};
 
   MatrixX queries(3, 3);
-  queries << Scalar{1.75f}, Scalar{0.1f}, Scalar{0},
-      Scalar{0.1f}, Scalar{2.75f}, Scalar{0},
+  queries << Scalar{1.75f}, Scalar{0.1f}, Scalar{0}, Scalar{0.1f}, Scalar{2.75f}, Scalar{0},
       Scalar{0}, Scalar{0.1f}, Scalar{3.75f};
 
   const auto idx = KnnSearch(points, queries, 1);
@@ -468,12 +463,10 @@ TEST(CorrespondenceMatching, KnnSearchFindsExactNearestNeighbors) {
 
 TEST(CorrespondenceMatching, MaxEuclideanDistanceKeepsValuesAtThreshold) {
   MatrixX3 fixed_points(3, 3);
-  fixed_points << Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{0}, Scalar{0}, Scalar{0};
+  fixed_points << Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0},
+      Scalar{0}, Scalar{0};
   MatrixX3 moving_points(3, 3);
-  moving_points << Scalar{1.999f}, Scalar{0}, Scalar{0},
-      Scalar{2.0f}, Scalar{0}, Scalar{0},
+  moving_points << Scalar{1.999f}, Scalar{0}, Scalar{0}, Scalar{2.0f}, Scalar{0}, Scalar{0},
       Scalar{2.001f}, Scalar{0}, Scalar{0};
 
   PtCloud fixed{fixed_points};
@@ -568,12 +561,10 @@ TEST(TranslationGridBasis, HermiteWeightsMatchReferenceMatrixEvaluator) {
   }
 
   MatrixX3 points(6, 3);
-  points << Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f},
-      Scalar{0.5f}, Scalar{0.25f}, Scalar{0.125f},
-      Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f},
-      Scalar{0.125f}, Scalar{0.875f}, Scalar{0.375f},
-      Scalar{0.999f}, Scalar{0.999f}, Scalar{0.999f};
+  points << Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f},
+      Scalar{0.5f}, Scalar{0.25f}, Scalar{0.125f}, Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f},
+      Scalar{0.125f}, Scalar{0.875f}, Scalar{0.375f}, Scalar{0.999f}, Scalar{0.999f},
+      Scalar{0.999f};
 
   const auto reference = grid.p(points);
   const auto weights = TranslationGrid::ComputeHermiteWeights(points);
@@ -614,8 +605,8 @@ TEST(TranslationGridBasis, CopyAllGridValsToVectorUsesGlobalIndices) {
   y_vals.fxyz = Scalar{16};
   y_grid.UpdateVoxelGridVals(0, 0, 0, y_vals);
 
-  VectorX coefficients = VectorX::Constant(x_grid.num_grid_vals() + y_grid.num_grid_vals(),
-                                           Scalar{-1});
+  VectorX coefficients =
+      VectorX::Constant(x_grid.num_grid_vals() + y_grid.num_grid_vals(), Scalar{-1});
   x_grid.CopyAllGridValsToVector(coefficients);
   y_grid.CopyAllGridValsToVector(coefficients);
 
@@ -634,8 +625,7 @@ TEST(TranslationGridBasis, AppendJTripletsMatchesWeightedReferenceJ) {
   grid.Initialize(origin, 1, 1, 1, Scalar{1}, 17);
 
   MatrixX3 points(2, 3);
-  points << Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f},
-      Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f};
+  points << Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f}, Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f};
   VectorX row_weights(2);
   row_weights << Scalar{2}, Scalar{-0.5f};
 
@@ -648,7 +638,6 @@ TEST(TranslationGridBasis, AppendJTripletsMatchesWeightedReferenceJ) {
     EXPECT_EQ(appended_triplets[i].row(), reference_triplets[i].row());
     EXPECT_EQ(appended_triplets[i].col(), reference_triplets[i].col());
     EXPECT_NEAR(appended_triplets[i].value(),
-                reference_triplets[i].value() * row_weights(reference_triplets[i].row()),
-                1e-6f);
+                reference_triplets[i].value() * row_weights(reference_triplets[i].row()), 1e-6f);
   }
 }

@@ -31,6 +31,5 @@ class Optimization {
 #endif
 };
 
-VectorX BuildZeroObservationWeights(const int num_unknowns,
-                                    const int num_grid_vals_per_component,
+VectorX BuildZeroObservationWeights(const int num_unknowns, const int num_grid_vals_per_component,
                                     const std::vector<Scalar>& weights);

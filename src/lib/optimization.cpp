@@ -21,8 +21,7 @@ Scalar WeightForDerivativeChannel(const int channel, const std::vector<Scalar>& 
   return weights[3];
 }
 
-OptimizationResults SolveWeightedJacobian(Correspondences& correspondences,
-                                          const SparseMatrix& J,
+OptimizationResults SolveWeightedJacobian(Correspondences& correspondences, const SparseMatrix& J,
                                           const int num_correspondences,
                                           const std::vector<Scalar>& weights_zero_observations) {
   OptimizationResults optimization_results{};
@@ -30,9 +29,8 @@ OptimizationResults SolveWeightedJacobian(Correspondences& correspondences,
   const int num_unknowns{static_cast<int>(J.cols())};
   const int num_grid_vals_per_component{
       correspondences.pc_mov().x_translation_grid().num_grid_vals()};
-  const VectorX direct_obs_weights{
-      BuildZeroObservationWeights(num_unknowns, num_grid_vals_per_component,
-                                  weights_zero_observations)};
+  const VectorX direct_obs_weights{BuildZeroObservationWeights(
+      num_unknowns, num_grid_vals_per_component, weights_zero_observations)};
   SparseMatrix normal_matrix{J.transpose() * J};
   for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
     normal_matrix.coeffRef(unknown_idx, unknown_idx) += direct_obs_weights(unknown_idx);
@@ -94,20 +92,14 @@ std::vector<float> CopyVector(const VectorX& vector) {
 
 nricp::cuda::CudaGridShape CudaShapeFromGrid(const TranslationGrid& grid) {
   return nricp::cuda::CudaGridShape{
-      grid.grid_origin()(0),
-      grid.grid_origin()(1),
-      grid.grid_origin()(2),
-      grid.x_num_voxels(),
-      grid.y_num_voxels(),
-      grid.z_num_voxels(),
-      grid.voxel_size()};
+      grid.grid_origin()(0), grid.grid_origin()(1), grid.grid_origin()(2), grid.x_num_voxels(),
+      grid.y_num_voxels(),   grid.z_num_voxels(),   grid.voxel_size()};
 }
 #endif
 
 }  // namespace
 
-VectorX BuildZeroObservationWeights(const int num_unknowns,
-                                    const int num_grid_vals_per_component,
+VectorX BuildZeroObservationWeights(const int num_unknowns, const int num_grid_vals_per_component,
                                     const std::vector<Scalar>& weights) {
   VectorX direct_obs_weights(num_unknowns);
   for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
@@ -144,19 +136,17 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
 }
 
 #ifndef NRICP_ENABLE_CUDA
-OptimizationResults Optimization::SolveGpu(
-    Correspondences& correspondences,
-    const std::vector<Scalar>& weights_zero_observations) {
+OptimizationResults Optimization::SolveGpu(Correspondences& correspondences,
+                                           const std::vector<Scalar>& weights_zero_observations) {
   (void)correspondences;
   (void)weights_zero_observations;
   throw std::runtime_error(
       "GPU execution backend is not available in this build; rerun with --execution_backend cpu.");
 }
 #else
-OptimizationResults Optimization::SolveGpu(
-    Correspondences& correspondences,
-    const std::vector<Scalar>& weights_zero_observations,
-    nricp::cuda::CudaPcgWorkspace* workspace) {
+OptimizationResults Optimization::SolveGpu(Correspondences& correspondences,
+                                           const std::vector<Scalar>& weights_zero_observations,
+                                           nricp::cuda::CudaPcgWorkspace* workspace) {
   CorrespondencesPointsWithAttributes X{correspondences.GetCorrespondences()};
   const int num_grid_vals_per_component{
       correspondences.pc_mov().x_translation_grid().num_grid_vals()};
@@ -165,14 +155,13 @@ OptimizationResults Optimization::SolveGpu(
   correspondences.pc_mov().x_translation_grid().CopyAllGridValsToVector(initial_guess);
   correspondences.pc_mov().y_translation_grid().CopyAllGridValsToVector(initial_guess);
   correspondences.pc_mov().z_translation_grid().CopyAllGridValsToVector(initial_guess);
-  const VectorX regularization_diag{
-      BuildZeroObservationWeights(num_unknowns, num_grid_vals_per_component,
-                                  weights_zero_observations)};
+  const VectorX regularization_diag{BuildZeroObservationWeights(
+      num_unknowns, num_grid_vals_per_component, weights_zero_observations)};
 
   std::unique_ptr<nricp::cuda::CudaPcgWorkspace> local_workspace;
   if (workspace == nullptr) {
-    local_workspace = std::make_unique<nricp::cuda::CudaPcgWorkspace>(
-        X.num, num_grid_vals_per_component);
+    local_workspace =
+        std::make_unique<nricp::cuda::CudaPcgWorkspace>(X.num, num_grid_vals_per_component);
     workspace = local_workspace.get();
   }
 

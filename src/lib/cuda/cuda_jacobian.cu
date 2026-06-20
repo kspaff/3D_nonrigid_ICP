@@ -1,9 +1,9 @@
-#include "src/lib/cuda/cuda_jacobian.hpp"
-
 #include <cuda_runtime_api.h>
 
 #include <stdexcept>
 #include <string>
+
+#include "src/lib/cuda/cuda_jacobian.hpp"
 
 namespace {
 
@@ -24,9 +24,7 @@ __device__ float CubicHermiteBasis(const float x, const int corner, const bool d
   return corner == 0 ? 2.0f * x3 - 3.0f * x2 + 1.0f : -2.0f * x3 + 3.0f * x2;
 }
 
-__device__ float HermiteWeight(const int coefficient_idx,
-                               const float local_x,
-                               const float local_y,
+__device__ float HermiteWeight(const int coefficient_idx, const float local_x, const float local_y,
                                const float local_z) {
   const int channel = coefficient_idx / 8;
   const int corner = coefficient_idx % 8;
@@ -42,16 +40,12 @@ __device__ float HermiteWeight(const int coefficient_idx,
          CubicHermiteBasis(local_z, corner_z, derivative_z[channel] != 0);
 }
 
-__global__ void BuildWeightedJacobianKernel(
-    const float* moving_points_xyz,
-    const float* normal_x,
-    const float* normal_y,
-    const float* normal_z,
-    nricp::cuda::CudaWeightedJacobianTriplet* triplets,
-    int* first_error_point,
-    const int num_points,
-    const nricp::cuda::CudaGridShape grid_shape,
-    const int num_grid_vals_per_component) {
+__global__ void BuildWeightedJacobianKernel(const float* moving_points_xyz, const float* normal_x,
+                                            const float* normal_y, const float* normal_z,
+                                            nricp::cuda::CudaWeightedJacobianTriplet* triplets,
+                                            int* first_error_point, const int num_points,
+                                            const nricp::cuda::CudaGridShape grid_shape,
+                                            const int num_grid_vals_per_component) {
   const int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= num_points) return;
 
@@ -81,9 +75,9 @@ __global__ void BuildWeightedJacobianKernel(
   const int z_nodes = grid_shape.z_num_voxels + 1;
 
   for (int component = 0; component < 3; ++component) {
-    const float row_weight =
-        component == 0 ? normal_x[point_idx] : (component == 1 ? normal_y[point_idx]
-                                                               : normal_z[point_idx]);
+    const float row_weight = component == 0
+                                 ? normal_x[point_idx]
+                                 : (component == 1 ? normal_y[point_idx] : normal_z[point_idx]);
     for (int coefficient_idx = 0; coefficient_idx < 64; ++coefficient_idx) {
       const int channel = coefficient_idx / 8;
       const int corner = coefficient_idx % 8;
@@ -94,10 +88,9 @@ __global__ void BuildWeightedJacobianKernel(
       const int output_idx = (component * num_points + point_idx) * 64 + coefficient_idx;
 
       triplets[output_idx].row = point_idx;
-      triplets[output_idx].col =
-          component * num_grid_vals_per_component + node_index * 8 + channel;
-      triplets[output_idx].value = HermiteWeight(coefficient_idx, local_x, local_y, local_z) *
-                                   row_weight;
+      triplets[output_idx].col = component * num_grid_vals_per_component + node_index * 8 + channel;
+      triplets[output_idx].value =
+          HermiteWeight(coefficient_idx, local_x, local_y, local_z) * row_weight;
     }
   }
 }
@@ -159,9 +152,9 @@ CudaWeightedJacobian BuildWeightedJacobian(const std::vector<float>& moving_poin
             "cudaMalloc(first_error_point)");
 
   try {
-    CheckCuda(cudaMemcpy(device_points, moving_points_xyz.data(), points_bytes,
-                         cudaMemcpyHostToDevice),
-              "cudaMemcpy(points)");
+    CheckCuda(
+        cudaMemcpy(device_points, moving_points_xyz.data(), points_bytes, cudaMemcpyHostToDevice),
+        "cudaMemcpy(points)");
     CheckCuda(cudaMemcpy(device_normal_x, normal_x.data(), normals_bytes, cudaMemcpyHostToDevice),
               "cudaMemcpy(normal_x)");
     CheckCuda(cudaMemcpy(device_normal_y, normal_y.data(), normals_bytes, cudaMemcpyHostToDevice),
@@ -188,9 +181,9 @@ CudaWeightedJacobian BuildWeightedJacobian(const std::vector<float>& moving_poin
                               " is outside the CUDA transformation domain");
     }
 
-    CheckCuda(cudaMemcpy(result.triplets.data(), device_triplets, triplets_bytes,
-                         cudaMemcpyDeviceToHost),
-              "cudaMemcpy(triplets)");
+    CheckCuda(
+        cudaMemcpy(result.triplets.data(), device_triplets, triplets_bytes, cudaMemcpyDeviceToHost),
+        "cudaMemcpy(triplets)");
   } catch (...) {
     cudaFree(device_first_error_point);
     cudaFree(device_triplets);

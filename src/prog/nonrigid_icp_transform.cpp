@@ -72,11 +72,9 @@ int main(int argc, char** argv) {
 
       MatrixX3 chunk_points =
           X(row_indices, {X.namedColIndex("x"), X.namedColIndex("y"), X.namedColIndex("z")});
-      X(row_indices, Eigen::seqN(0, 3)) =
-          ApplyTranslationGrids(chunk_points,
-                                transform_grid_holder.x_translation_grid(),
-                                transform_grid_holder.y_translation_grid(),
-                                transform_grid_holder.z_translation_grid());
+      X(row_indices, Eigen::seqN(0, 3)) = ApplyTranslationGrids(
+          chunk_points, transform_grid_holder.x_translation_grid(),
+          transform_grid_holder.y_translation_grid(), transform_grid_holder.z_translation_grid());
     }
     if (params.profiling) profiler.Stop("A.03 Transformation of point cloud");
 

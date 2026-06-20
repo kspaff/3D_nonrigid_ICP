@@ -1,9 +1,9 @@
-#include "src/lib/cuda/cuda_runtime.hpp"
-
 #include <cuda_runtime_api.h>
 
 #include <stdexcept>
 #include <string>
+
+#include "src/lib/cuda/cuda_runtime.hpp"
 
 namespace {
 

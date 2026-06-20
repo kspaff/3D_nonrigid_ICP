@@ -1,11 +1,11 @@
-#include "src/lib/cuda/cuda_solver.hpp"
-
 #include <cublas_v2.h>
 #include <cuda_runtime_api.h>
 
 #include <cmath>
 #include <stdexcept>
 #include <string>
+
+#include "src/lib/cuda/cuda_solver.hpp"
 
 namespace {
 
@@ -17,8 +17,7 @@ void CheckCuda(const cudaError_t status, const char* operation) {
 
 void CheckCublas(const cublasStatus_t status, const char* operation) {
   if (status != CUBLAS_STATUS_SUCCESS) {
-    throw std::runtime_error(std::string(operation) +
-                             " failed with cuBLAS status " +
+    throw std::runtime_error(std::string(operation) + " failed with cuBLAS status " +
                              std::to_string(static_cast<int>(status)));
   }
 }
@@ -34,15 +33,10 @@ __device__ float CubicHermiteBasis(const float x, const int corner, const bool d
   return corner == 0 ? 2.0f * x3 - 3.0f * x2 + 1.0f : -2.0f * x3 + 3.0f * x2;
 }
 
-__device__ bool ComputeGridReference(const float* moving_points_xyz,
-                                     const int point_idx,
-                                     const nricp::cuda::CudaGridShape grid_shape,
-                                     int& x_voxel_idx,
-                                     int& y_voxel_idx,
-                                     int& z_voxel_idx,
-                                     float& local_x,
-                                     float& local_y,
-                                     float& local_z) {
+__device__ bool ComputeGridReference(const float* moving_points_xyz, const int point_idx,
+                                     const nricp::cuda::CudaGridShape grid_shape, int& x_voxel_idx,
+                                     int& y_voxel_idx, int& z_voxel_idx, float& local_x,
+                                     float& local_y, float& local_z) {
   const int point_offset = point_idx * 3;
   const float x = moving_points_xyz[point_offset + 0];
   const float y = moving_points_xyz[point_offset + 1];
@@ -67,9 +61,7 @@ __device__ bool ComputeGridReference(const float* moving_points_xyz,
   return true;
 }
 
-__device__ float HermiteWeight(const int coefficient_idx,
-                               const float local_x,
-                               const float local_y,
+__device__ float HermiteWeight(const int coefficient_idx, const float local_x, const float local_y,
                                const float local_z) {
   const int channel = coefficient_idx / 8;
   const int corner = coefficient_idx % 8;
@@ -85,12 +77,9 @@ __device__ float HermiteWeight(const int coefficient_idx,
          CubicHermiteBasis(local_z, corner_z, derivative_z[channel] != 0);
 }
 
-__device__ int CoefficientColumn(const int coefficient_idx,
-                                 const int component,
-                                 const int x_voxel_idx,
-                                 const int y_voxel_idx,
-                                 const int z_voxel_idx,
-                                 const nricp::cuda::CudaGridShape grid_shape,
+__device__ int CoefficientColumn(const int coefficient_idx, const int component,
+                                 const int x_voxel_idx, const int y_voxel_idx,
+                                 const int z_voxel_idx, const nricp::cuda::CudaGridShape grid_shape,
                                  const int num_grid_vals_per_component) {
   const int channel = coefficient_idx / 8;
   const int corner = coefficient_idx % 8;
@@ -103,25 +92,16 @@ __device__ int CoefficientColumn(const int coefficient_idx,
   return component * num_grid_vals_per_component + node_index * 8 + channel;
 }
 
-__device__ float ComponentWeight(const int component,
-                                 const int point_idx,
-                                 const float* normal_x,
-                                 const float* normal_y,
-                                 const float* normal_z) {
+__device__ float ComponentWeight(const int component, const int point_idx, const float* normal_x,
+                                 const float* normal_y, const float* normal_z) {
   return component == 0 ? normal_x[point_idx]
                         : (component == 1 ? normal_y[point_idx] : normal_z[point_idx]);
 }
 
 __global__ void PrecomputeWeightedJacobianMetadataKernel(
-    const float* moving_points_xyz,
-    const float* normal_x,
-    const float* normal_y,
-    const float* normal_z,
-    float* weighted_values,
-    int* columns,
-    int* first_error_point,
-    const int num_points,
-    const nricp::cuda::CudaGridShape grid_shape,
+    const float* moving_points_xyz, const float* normal_x, const float* normal_y,
+    const float* normal_z, float* weighted_values, int* columns, int* first_error_point,
+    const int num_points, const nricp::cuda::CudaGridShape grid_shape,
     const int num_grid_vals_per_component) {
   const int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= num_points) return;
@@ -139,25 +119,24 @@ __global__ void PrecomputeWeightedJacobianMetadataKernel(
   }
 
   for (int component = 0; component < 3; ++component) {
-    const float component_weight = ComponentWeight(component, point_idx, normal_x, normal_y,
-                                                   normal_z);
+    const float component_weight =
+        ComponentWeight(component, point_idx, normal_x, normal_y, normal_z);
     for (int coefficient_idx = 0; coefficient_idx < 64; ++coefficient_idx) {
       const int metadata_idx = (point_idx * 3 + component) * 64 + coefficient_idx;
-      weighted_values[metadata_idx] = HermiteWeight(coefficient_idx, local_x, local_y, local_z) *
-                                      component_weight;
-      columns[metadata_idx] = CoefficientColumn(coefficient_idx, component, x_voxel_idx,
-                                                y_voxel_idx, z_voxel_idx, grid_shape,
-                                                num_grid_vals_per_component);
+      weighted_values[metadata_idx] =
+          HermiteWeight(coefficient_idx, local_x, local_y, local_z) * component_weight;
+      columns[metadata_idx] =
+          CoefficientColumn(coefficient_idx, component, x_voxel_idx, y_voxel_idx, z_voxel_idx,
+                            grid_shape, num_grid_vals_per_component);
     }
   }
 }
 
 __global__ void BuildRhsAndPreconditionerFromMetadataKernel(const float* weighted_values,
-                                                           const int* columns,
-                                                           const float* point_to_plane_dists,
-                                                           float* rhs,
-                                                           float* preconditioner_diag,
-                                                           const int num_points) {
+                                                            const int* columns,
+                                                            const float* point_to_plane_dists,
+                                                            float* rhs, float* preconditioner_diag,
+                                                            const int num_points) {
   const int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= num_points) return;
 
@@ -173,8 +152,7 @@ __global__ void BuildRhsAndPreconditionerFromMetadataKernel(const float* weighte
   }
 }
 
-__global__ void ApplyRegularizationKernel(float* output,
-                                          const float* input,
+__global__ void ApplyRegularizationKernel(float* output, const float* input,
                                           const float* regularization_diag,
                                           const int num_unknowns) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -183,10 +161,8 @@ __global__ void ApplyRegularizationKernel(float* output,
 }
 
 __global__ void ApplyNormalMatrixFromMetadataKernel(const float* weighted_values,
-                                                    const int* columns,
-                                                    const float* input,
-                                                    float* output,
-                                                    const int num_points) {
+                                                    const int* columns, const float* input,
+                                                    float* output, const int num_points) {
   const int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= num_points) return;
 
@@ -206,8 +182,7 @@ __global__ void ApplyNormalMatrixFromMetadataKernel(const float* weighted_values
   }
 }
 
-__global__ void ApplyInversePreconditionerKernel(float* z,
-                                                 const float* r,
+__global__ void ApplyInversePreconditionerKernel(float* z, const float* r,
                                                  const float* preconditioner_diag,
                                                  const int num_unknowns) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -216,9 +191,7 @@ __global__ void ApplyInversePreconditionerKernel(float* z,
   z[idx] = diag > 0.0f ? r[idx] / diag : r[idx];
 }
 
-__global__ void UpdateConjugateDirectionKernel(float* p,
-                                               const float* z,
-                                               const float beta,
+__global__ void UpdateConjugateDirectionKernel(float* p, const float* z, const float beta,
                                                const int num_unknowns) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_unknowns) return;
@@ -228,10 +201,8 @@ __global__ void UpdateConjugateDirectionKernel(float* p,
 void ApplyNormalEquationsFromMetadata(const float* device_weighted_values,
                                       const int* device_columns,
                                       const float* device_regularization_diag,
-                                      const float* device_input,
-                                      float* device_output,
-                                      const int num_points,
-                                      const int num_unknowns) {
+                                      const float* device_input, float* device_output,
+                                      const int num_points, const int num_unknowns) {
   constexpr int kThreadsPerBlock = 256;
   const int unknown_blocks = (num_unknowns + kThreadsPerBlock - 1) / kThreadsPerBlock;
   ApplyRegularizationKernel<<<unknown_blocks, kThreadsPerBlock>>>(
@@ -255,8 +226,7 @@ struct CudaPcgWorkspace::Impl {
         num_unknowns{num_grid_vals_per_component_in * 3},
         points_bytes{static_cast<size_t>(max_num_points_in) * 3 * sizeof(float)},
         point_scalars_bytes{static_cast<size_t>(max_num_points_in) * sizeof(float)},
-        unknowns_bytes{static_cast<size_t>(num_grid_vals_per_component_in) * 3 *
-                       sizeof(float)},
+        unknowns_bytes{static_cast<size_t>(num_grid_vals_per_component_in) * 3 * sizeof(float)},
         metadata_entries{static_cast<size_t>(max_num_points_in) * 3 * 64},
         metadata_values_bytes{metadata_entries * sizeof(float)},
         metadata_columns_bytes{metadata_entries * sizeof(int)} {
@@ -282,19 +252,14 @@ struct CudaPcgWorkspace::Impl {
                 "cudaMalloc(preconditioner_diag)");
       CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_rhs), unknowns_bytes),
                 "cudaMalloc(rhs)");
-      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_x), unknowns_bytes),
-                "cudaMalloc(x)");
-      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_r), unknowns_bytes),
-                "cudaMalloc(r)");
-      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_z), unknowns_bytes),
-                "cudaMalloc(z)");
-      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_p), unknowns_bytes),
-                "cudaMalloc(p)");
-      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_ap), unknowns_bytes),
-                "cudaMalloc(Ap)");
-      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_weighted_values),
-                           metadata_values_bytes),
-                "cudaMalloc(weighted_values)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_x), unknowns_bytes), "cudaMalloc(x)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_r), unknowns_bytes), "cudaMalloc(r)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_z), unknowns_bytes), "cudaMalloc(z)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_p), unknowns_bytes), "cudaMalloc(p)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_ap), unknowns_bytes), "cudaMalloc(Ap)");
+      CheckCuda(
+          cudaMalloc(reinterpret_cast<void**>(&device_weighted_values), metadata_values_bytes),
+          "cudaMalloc(weighted_values)");
       CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_columns), metadata_columns_bytes),
                 "cudaMalloc(columns)");
       CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_first_error_point), sizeof(int)),
@@ -374,8 +339,7 @@ struct CudaPcgWorkspace::Impl {
   cublasHandle_t cublas_handle{};
 };
 
-CudaPcgWorkspace::CudaPcgWorkspace(const int max_num_points,
-                                   const int num_grid_vals_per_component)
+CudaPcgWorkspace::CudaPcgWorkspace(const int max_num_points, const int num_grid_vals_per_component)
     : impl_{std::make_unique<Impl>(max_num_points, num_grid_vals_per_component)} {}
 
 CudaPcgWorkspace::~CudaPcgWorkspace() = default;
@@ -388,17 +352,12 @@ int CudaPcgWorkspace::num_grid_vals_per_component() const {
 
 int CudaPcgWorkspace::num_unknowns() const { return impl_->num_unknowns; }
 
-CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
-                                          const std::vector<float>& moving_points_xyz,
-                                          const std::vector<float>& normal_x,
-                                          const std::vector<float>& normal_y,
-                                          const std::vector<float>& normal_z,
-                                          const std::vector<float>& point_to_plane_dists,
-                                          const std::vector<float>& regularization_diag,
-                                          const std::vector<float>& initial_guess,
-                                          const CudaGridShape& grid_shape,
-                                          const int max_iterations,
-                                          const float tolerance) {
+CudaCgSolveResult SolveNormalEquationsPcg(
+    CudaPcgWorkspace& workspace, const std::vector<float>& moving_points_xyz,
+    const std::vector<float>& normal_x, const std::vector<float>& normal_y,
+    const std::vector<float>& normal_z, const std::vector<float>& point_to_plane_dists,
+    const std::vector<float>& regularization_diag, const std::vector<float>& initial_guess,
+    const CudaGridShape& grid_shape, const int max_iterations, const float tolerance) {
   if (moving_points_xyz.size() % 3 != 0) {
     throw std::invalid_argument("moving_points_xyz must contain x/y/z triples");
   }
@@ -429,33 +388,31 @@ CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
   const size_t point_scalars_bytes = normal_x.size() * sizeof(float);
   const int no_error = -1;
 
-  CheckCuda(cudaMemcpy(w.device_points, moving_points_xyz.data(), points_bytes,
-                       cudaMemcpyHostToDevice),
-            "cudaMemcpy(points)");
-  CheckCuda(cudaMemcpy(w.device_normal_x, normal_x.data(), point_scalars_bytes,
-                       cudaMemcpyHostToDevice),
-            "cudaMemcpy(normal_x)");
-  CheckCuda(cudaMemcpy(w.device_normal_y, normal_y.data(), point_scalars_bytes,
-                       cudaMemcpyHostToDevice),
-            "cudaMemcpy(normal_y)");
-  CheckCuda(cudaMemcpy(w.device_normal_z, normal_z.data(), point_scalars_bytes,
-                       cudaMemcpyHostToDevice),
-            "cudaMemcpy(normal_z)");
+  CheckCuda(
+      cudaMemcpy(w.device_points, moving_points_xyz.data(), points_bytes, cudaMemcpyHostToDevice),
+      "cudaMemcpy(points)");
+  CheckCuda(
+      cudaMemcpy(w.device_normal_x, normal_x.data(), point_scalars_bytes, cudaMemcpyHostToDevice),
+      "cudaMemcpy(normal_x)");
+  CheckCuda(
+      cudaMemcpy(w.device_normal_y, normal_y.data(), point_scalars_bytes, cudaMemcpyHostToDevice),
+      "cudaMemcpy(normal_y)");
+  CheckCuda(
+      cudaMemcpy(w.device_normal_z, normal_z.data(), point_scalars_bytes, cudaMemcpyHostToDevice),
+      "cudaMemcpy(normal_z)");
   CheckCuda(cudaMemcpy(w.device_dists, point_to_plane_dists.data(), point_scalars_bytes,
                        cudaMemcpyHostToDevice),
             "cudaMemcpy(point_to_plane_dists)");
-  CheckCuda(cudaMemcpy(w.device_regularization_diag, regularization_diag.data(),
-                       w.unknowns_bytes, cudaMemcpyHostToDevice),
+  CheckCuda(cudaMemcpy(w.device_regularization_diag, regularization_diag.data(), w.unknowns_bytes,
+                       cudaMemcpyHostToDevice),
             "cudaMemcpy(regularization_diag)");
-  CheckCuda(cudaMemcpy(w.device_preconditioner_diag, regularization_diag.data(),
-                       w.unknowns_bytes, cudaMemcpyHostToDevice),
+  CheckCuda(cudaMemcpy(w.device_preconditioner_diag, regularization_diag.data(), w.unknowns_bytes,
+                       cudaMemcpyHostToDevice),
             "cudaMemcpy(preconditioner_diag)");
   CheckCuda(cudaMemset(w.device_rhs, 0, w.unknowns_bytes), "cudaMemset(rhs)");
-  CheckCuda(cudaMemcpy(w.device_x, initial_guess.data(), w.unknowns_bytes,
-                       cudaMemcpyHostToDevice),
+  CheckCuda(cudaMemcpy(w.device_x, initial_guess.data(), w.unknowns_bytes, cudaMemcpyHostToDevice),
             "cudaMemcpy(x)");
-  CheckCuda(cudaMemcpy(w.device_first_error_point, &no_error, sizeof(int),
-                       cudaMemcpyHostToDevice),
+  CheckCuda(cudaMemcpy(w.device_first_error_point, &no_error, sizeof(int), cudaMemcpyHostToDevice),
             "cudaMemcpy(first_error_point)");
 
   constexpr int kThreadsPerBlock = 256;
@@ -487,8 +444,7 @@ CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
   CheckCuda(cudaMemcpy(w.device_r, w.device_rhs, w.unknowns_bytes, cudaMemcpyDeviceToDevice),
             "cudaMemcpy(r=rhs)");
   float minus_one = -1.0f;
-  CheckCublas(cublasSaxpy(w.cublas_handle, num_unknowns, &minus_one, w.device_ap, 1,
-                          w.device_r, 1),
+  CheckCublas(cublasSaxpy(w.cublas_handle, num_unknowns, &minus_one, w.device_ap, 1, w.device_r, 1),
               "cublasSaxpy(r-=Ap)");
 
   float rhs_norm = 0.0f;
@@ -502,9 +458,9 @@ CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
   result.relative_error = residual_norm / normalization;
   if (result.relative_error <= tolerance) {
     result.success = true;
-    CheckCuda(cudaMemcpy(result.solution.data(), w.device_x, w.unknowns_bytes,
-                         cudaMemcpyDeviceToHost),
-              "cudaMemcpy(solution)");
+    CheckCuda(
+        cudaMemcpy(result.solution.data(), w.device_x, w.unknowns_bytes, cudaMemcpyDeviceToHost),
+        "cudaMemcpy(solution)");
     return result;
   }
 
@@ -525,8 +481,7 @@ CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
                                      num_points, num_unknowns);
 
     float p_ap = 0.0f;
-    CheckCublas(cublasSdot(w.cublas_handle, num_unknowns, w.device_p, 1, w.device_ap, 1,
-                           &p_ap),
+    CheckCublas(cublasSdot(w.cublas_handle, num_unknowns, w.device_p, 1, w.device_ap, 1, &p_ap),
                 "cublasSdot(p,Ap)");
     if (p_ap <= 0.0f || rz_old == 0.0f) {
       result.success = false;
@@ -534,13 +489,12 @@ CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
     }
 
     const float alpha = rz_old / p_ap;
-    CheckCublas(cublasSaxpy(w.cublas_handle, num_unknowns, &alpha, w.device_p, 1, w.device_x,
-                            1),
+    CheckCublas(cublasSaxpy(w.cublas_handle, num_unknowns, &alpha, w.device_p, 1, w.device_x, 1),
                 "cublasSaxpy(x+=alpha*p)");
     const float negative_alpha = -alpha;
-    CheckCublas(cublasSaxpy(w.cublas_handle, num_unknowns, &negative_alpha, w.device_ap, 1,
-                            w.device_r, 1),
-                "cublasSaxpy(r-=alpha*Ap)");
+    CheckCublas(
+        cublasSaxpy(w.cublas_handle, num_unknowns, &negative_alpha, w.device_ap, 1, w.device_r, 1),
+        "cublasSaxpy(r-=alpha*Ap)");
 
     CheckCublas(cublasSnrm2(w.cublas_handle, num_unknowns, w.device_r, 1, &residual_norm),
                 "cublasSnrm2(r iter)");
@@ -556,33 +510,27 @@ CudaCgSolveResult SolveNormalEquationsPcg(CudaPcgWorkspace& workspace,
     CheckCuda(cudaGetLastError(), "ApplyInversePreconditionerKernel");
 
     float rz_new = 0.0f;
-    CheckCublas(cublasSdot(w.cublas_handle, num_unknowns, w.device_r, 1, w.device_z, 1,
-                           &rz_new),
+    CheckCublas(cublasSdot(w.cublas_handle, num_unknowns, w.device_r, 1, w.device_z, 1, &rz_new),
                 "cublasSdot(r,z iter)");
     const float beta = rz_new / rz_old;
-    UpdateConjugateDirectionKernel<<<unknown_blocks, kThreadsPerBlock>>>(
-        w.device_p, w.device_z, beta, num_unknowns);
+    UpdateConjugateDirectionKernel<<<unknown_blocks, kThreadsPerBlock>>>(w.device_p, w.device_z,
+                                                                         beta, num_unknowns);
     CheckCuda(cudaGetLastError(), "UpdateConjugateDirectionKernel");
     rz_old = rz_new;
   }
 
-  CheckCuda(cudaMemcpy(result.solution.data(), w.device_x, w.unknowns_bytes,
-                       cudaMemcpyDeviceToHost),
-            "cudaMemcpy(solution)");
+  CheckCuda(
+      cudaMemcpy(result.solution.data(), w.device_x, w.unknowns_bytes, cudaMemcpyDeviceToHost),
+      "cudaMemcpy(solution)");
   return result;
 }
 
-CudaCgSolveResult SolveNormalEquationsPcg(const std::vector<float>& moving_points_xyz,
-                                          const std::vector<float>& normal_x,
-                                          const std::vector<float>& normal_y,
-                                          const std::vector<float>& normal_z,
-                                          const std::vector<float>& point_to_plane_dists,
-                                          const std::vector<float>& regularization_diag,
-                                          const std::vector<float>& initial_guess,
-                                          const CudaGridShape& grid_shape,
-                                          const int num_grid_vals_per_component,
-                                          const int max_iterations,
-                                          const float tolerance) {
+CudaCgSolveResult SolveNormalEquationsPcg(
+    const std::vector<float>& moving_points_xyz, const std::vector<float>& normal_x,
+    const std::vector<float>& normal_y, const std::vector<float>& normal_z,
+    const std::vector<float>& point_to_plane_dists, const std::vector<float>& regularization_diag,
+    const std::vector<float>& initial_guess, const CudaGridShape& grid_shape,
+    const int num_grid_vals_per_component, const int max_iterations, const float tolerance) {
   if (moving_points_xyz.size() % 3 != 0) {
     throw std::invalid_argument("moving_points_xyz must contain x/y/z triples");
   }

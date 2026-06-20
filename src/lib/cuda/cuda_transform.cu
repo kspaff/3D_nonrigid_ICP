@@ -1,9 +1,9 @@
-#include "src/lib/cuda/cuda_transform.hpp"
-
 #include <cuda_runtime_api.h>
 
 #include <stdexcept>
 #include <string>
+
+#include "src/lib/cuda/cuda_transform.hpp"
 
 namespace {
 
@@ -25,11 +25,8 @@ __device__ float CubicHermiteBasis(const float x, const int corner, const bool d
 
 __device__ float EvaluateComponent(const float* coefficients,
                                    const nricp::cuda::CudaGridShape grid_shape,
-                                   const int x_voxel_idx,
-                                   const int y_voxel_idx,
-                                   const int z_voxel_idx,
-                                   const float local_x,
-                                   const float local_y,
+                                   const int x_voxel_idx, const int y_voxel_idx,
+                                   const int z_voxel_idx, const float local_x, const float local_y,
                                    const float local_z) {
   constexpr int kDerivativeX[8]{0, 1, 0, 0, 1, 1, 0, 1};
   constexpr int kDerivativeY[8]{0, 0, 1, 0, 1, 0, 1, 1};
@@ -48,10 +45,9 @@ __device__ float EvaluateComponent(const float* coefficients,
       const int node_y = y_voxel_idx + corner_y;
       const int node_z = z_voxel_idx + corner_z;
       const int node_index = (node_x * y_nodes + node_y) * z_nodes + node_z;
-      const float weight =
-          CubicHermiteBasis(local_x, corner_x, kDerivativeX[channel] != 0) *
-          CubicHermiteBasis(local_y, corner_y, kDerivativeY[channel] != 0) *
-          CubicHermiteBasis(local_z, corner_z, kDerivativeZ[channel] != 0);
+      const float weight = CubicHermiteBasis(local_x, corner_x, kDerivativeX[channel] != 0) *
+                           CubicHermiteBasis(local_y, corner_y, kDerivativeY[channel] != 0) *
+                           CubicHermiteBasis(local_z, corner_z, kDerivativeZ[channel] != 0);
       value += weight * coefficients[node_index * 8 + channel];
     }
   }
@@ -59,10 +55,8 @@ __device__ float EvaluateComponent(const float* coefficients,
   return value;
 }
 
-__global__ void ApplyTranslationGridsKernel(const float* points_xyz,
-                                            float* transformed_xyz,
-                                            const int num_points,
-                                            const float* x_coefficients,
+__global__ void ApplyTranslationGridsKernel(const float* points_xyz, float* transformed_xyz,
+                                            const int num_points, const float* x_coefficients,
                                             const float* y_coefficients,
                                             const float* z_coefficients,
                                             const nricp::cuda::CudaGridShape grid_shape) {
@@ -111,10 +105,9 @@ std::vector<float> ApplyTranslationGrids(const std::vector<float>& points_xyz,
       x_coefficients.size() != z_coefficients.size()) {
     throw std::invalid_argument("x/y/z coefficient vectors must have equal sizes");
   }
-  const size_t expected_coefficients =
-      static_cast<size_t>(grid_shape.x_num_voxels + 1) *
-      static_cast<size_t>(grid_shape.y_num_voxels + 1) *
-      static_cast<size_t>(grid_shape.z_num_voxels + 1) * 8;
+  const size_t expected_coefficients = static_cast<size_t>(grid_shape.x_num_voxels + 1) *
+                                       static_cast<size_t>(grid_shape.y_num_voxels + 1) *
+                                       static_cast<size_t>(grid_shape.z_num_voxels + 1) * 8;
   if (x_coefficients.size() != expected_coefficients) {
     throw std::invalid_argument("coefficient vector size does not match grid shape");
   }
@@ -153,8 +146,8 @@ std::vector<float> ApplyTranslationGrids(const std::vector<float>& points_xyz,
     constexpr int kThreadsPerBlock = 256;
     const int num_blocks = (num_points + kThreadsPerBlock - 1) / kThreadsPerBlock;
     ApplyTranslationGridsKernel<<<num_blocks, kThreadsPerBlock>>>(
-        device_points, device_transformed, num_points, device_x_coefficients,
-        device_y_coefficients, device_z_coefficients, grid_shape);
+        device_points, device_transformed, num_points, device_x_coefficients, device_y_coefficients,
+        device_z_coefficients, grid_shape);
     CheckCuda(cudaGetLastError(), "ApplyTranslationGridsKernel");
     CheckCuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize");
 

@@ -53,10 +53,8 @@ Params ParseUserInputs(int argc, char** argv);
 
 void ReportIterationResults(const IterationResults& iteration_results);
 
-int main(int argc, char** argv)
-{
-
-    try {
+int main(int argc, char** argv) {
+  try {
     Params params = ParseUserInputs(argc, argv);
 
     auto& profiler = Profiler::Instance();
@@ -74,13 +72,13 @@ int main(int argc, char** argv)
     auto X_fix = ImportFileToMatrix(params.fixed, true, matching_by_id);
     auto X_mov = ImportFileToMatrix(params.movable, matching_by_id, matching_by_id);
 
-    std::cout << "Fixed Dimensions: " << X_fix.rows() << " rows x " << X_fix.cols() << " cols" << std::endl;
+    std::cout << "Fixed Dimensions: " << X_fix.rows() << " rows x " << X_fix.cols() << " cols"
+              << std::endl;
     std::cout << "Fixed Datatype:   " << typeid(decltype(X_fix)::Scalar).name() << std::endl;
 
     std::cout << "Moving Dimensions: " << X_mov.rows() << " rows x " << X_mov.cols() << " cols"
               << std::endl;
     std::cout << "Moving Datatype:   " << typeid(decltype(X_mov)::Scalar).name() << std::endl;
-
 
     PtCloud pc_fix(X_fix.leftCols(3));
     PtCloud pc_mov(X_mov.leftCols(3));
@@ -90,10 +88,10 @@ int main(int argc, char** argv)
       pc_mov.SetNormals(X_mov.namedCol("nx"), X_mov.namedCol("ny"), X_mov.namedCol("nz"));
     }
 
-	if (matching_by_id) {
-		pc_fix.SetCorrespondenceId(X_fix.namedCol("correspondence_id"));
-		pc_mov.SetCorrespondenceId(X_mov.namedCol("correspondence_id"));
-	}
+    if (matching_by_id) {
+      pc_fix.SetCorrespondenceId(X_fix.namedCol("correspondence_id"));
+      pc_mov.SetCorrespondenceId(X_mov.namedCol("correspondence_id"));
+    }
     if (!params.suppress_logging) {
       std::cout << fmt::format("  Fixed point cloud has {:d} points\n", pc_fix.NumPts());
       std::cout << fmt::format("  Movable point cloud has {:d} points\n", pc_mov.NumPts());
@@ -149,8 +147,7 @@ int main(int argc, char** argv)
     if (params.execution_backend == "gpu") {
       if (params.profiling) profiler.Start("A.03b GPU fitting workspace initialization");
       gpu_pcg_workspace = std::make_unique<nricp::cuda::CudaPcgWorkspace>(
-          static_cast<int>(correspondences.num()),
-          pc_mov.x_translation_grid().num_grid_vals());
+          static_cast<int>(correspondences.num()), pc_mov.x_translation_grid().num_grid_vals());
       if (params.profiling) profiler.Stop("A.03b GPU fitting workspace initialization");
     }
 #endif
@@ -199,7 +196,8 @@ int main(int argc, char** argv)
             Optimization::SolveGpu(correspondences, params.weights);
 #endif
       } else {
-        iteration_results.optimization_results = Optimization::Solve(correspondences, params.weights);
+        iteration_results.optimization_results =
+            Optimization::Solve(correspondences, params.weights);
       }
       if (params.profiling) profiler.Stop("A.05 Optimization");
 
@@ -340,7 +338,8 @@ Params ParseUserInputs(int argc, char** argv) {
 #ifndef NRICP_ENABLE_CUDA
   if (params.execution_backend == "gpu") {
     throw std::runtime_error(
-        "GPU execution backend is not available in this build; rerun with --execution_backend cpu.");
+        "GPU execution backend is not available in this build; rerun with --execution_backend "
+        "cpu.");
   }
 #endif
 

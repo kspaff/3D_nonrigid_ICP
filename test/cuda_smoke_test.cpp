@@ -69,8 +69,7 @@ TEST(CudaTransform, MatchesCpuTricubicTransformEvaluator) {
   TranslationGrid z_grid;
   x_grid.Initialize(origin, 1, 1, 1, Scalar{1}, 0);
   y_grid.Initialize(origin, 1, 1, 1, Scalar{1}, x_grid.num_grid_vals());
-  z_grid.Initialize(origin, 1, 1, 1, Scalar{1},
-                    x_grid.num_grid_vals() + y_grid.num_grid_vals());
+  z_grid.Initialize(origin, 1, 1, 1, Scalar{1}, x_grid.num_grid_vals() + y_grid.num_grid_vals());
 
   for (int corner = 0; corner < 8; ++corner) {
     const int x = corner & 1;
@@ -100,25 +99,22 @@ TEST(CudaTransform, MatchesCpuTricubicTransformEvaluator) {
   }
 
   MatrixX3 points(5, 3);
-  points << Scalar{0}, Scalar{0}, Scalar{0},
-      Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f},
-      Scalar{0.5f}, Scalar{0.25f}, Scalar{0.125f},
-      Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f},
+  points << Scalar{0}, Scalar{0}, Scalar{0}, Scalar{0.25f}, Scalar{0.5f}, Scalar{0.75f},
+      Scalar{0.5f}, Scalar{0.25f}, Scalar{0.125f}, Scalar{0.9f}, Scalar{0.1f}, Scalar{0.6f},
       Scalar{0.999f}, Scalar{0.999f}, Scalar{0.999f};
   const auto cpu_transformed = ApplyTranslationGrids(points, x_grid, y_grid, z_grid);
 
   const auto points_xyz = FlattenPoints(points);
 
-  const nricp::cuda::CudaGridShape grid_shape{
-      0.0f, 0.0f, 0.0f, 1, 1, 1, 1.0f};
+  const nricp::cuda::CudaGridShape grid_shape{0.0f, 0.0f, 0.0f, 1, 1, 1, 1.0f};
   const auto gpu_transformed = nricp::cuda::ApplyTranslationGrids(
       points_xyz, FlattenGrid(x_grid), FlattenGrid(y_grid), FlattenGrid(z_grid), grid_shape);
 
   ASSERT_EQ(gpu_transformed.size(), points_xyz.size());
   for (Eigen::Index row = 0; row < points.rows(); ++row) {
     for (Eigen::Index col = 0; col < 3; ++col) {
-      EXPECT_NEAR(gpu_transformed[static_cast<size_t>(row * 3 + col)],
-                  cpu_transformed(row, col), 1e-5f);
+      EXPECT_NEAR(gpu_transformed[static_cast<size_t>(row * 3 + col)], cpu_transformed(row, col),
+                  1e-5f);
     }
   }
 }
@@ -131,12 +127,10 @@ TEST(CudaFitting, WeightedJacobianMatchesCpuTriplets) {
   TranslationGrid z_grid;
   x_grid.Initialize(origin, 1, 1, 1, Scalar{1}, 0);
   y_grid.Initialize(origin, 1, 1, 1, Scalar{1}, x_grid.num_grid_vals());
-  z_grid.Initialize(origin, 1, 1, 1, Scalar{1},
-                    x_grid.num_grid_vals() + y_grid.num_grid_vals());
+  z_grid.Initialize(origin, 1, 1, 1, Scalar{1}, x_grid.num_grid_vals() + y_grid.num_grid_vals());
 
   MatrixX3 points(3, 3);
-  points << Scalar{0.125f}, Scalar{0.25f}, Scalar{0.5f},
-      Scalar{0.5f}, Scalar{0.75f}, Scalar{0.25f},
+  points << Scalar{0.125f}, Scalar{0.25f}, Scalar{0.5f}, Scalar{0.5f}, Scalar{0.75f}, Scalar{0.25f},
       Scalar{0.875f}, Scalar{0.125f}, Scalar{0.625f};
   VectorX normal_x(3);
   VectorX normal_y(3);
@@ -151,8 +145,7 @@ TEST(CudaFitting, WeightedJacobianMatchesCpuTriplets) {
   y_grid.AppendJTriplets(points, normal_y, cpu_triplets);
   z_grid.AppendJTriplets(points, normal_z, cpu_triplets);
 
-  const nricp::cuda::CudaGridShape grid_shape{
-      0.0f, 0.0f, 0.0f, 1, 1, 1, 1.0f};
+  const nricp::cuda::CudaGridShape grid_shape{0.0f, 0.0f, 0.0f, 1, 1, 1, 1.0f};
   const auto gpu_jacobian = nricp::cuda::BuildWeightedJacobian(
       FlattenPoints(points), CopyVector(normal_x), CopyVector(normal_y), CopyVector(normal_z),
       grid_shape, x_grid.num_grid_vals());
