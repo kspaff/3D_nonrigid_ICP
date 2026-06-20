@@ -217,7 +217,8 @@ testing::AssertionResult NricpFilesNear(const std::filesystem::path& actual_path
          << " at payload index " << max_abs_diff_index;
 }
 
-void ExpectLockedFitMatchesGolden(const std::filesystem::path& transform_path) {
+void ExpectLockedFitMatchesGolden(const std::filesystem::path& transform_path,
+                                  const double payload_epsilon = 1e-4) {
   const std::filesystem::path golden_path{NRICP_GOLDEN_TRANSFORM};
   ASSERT_TRUE(std::filesystem::exists(transform_path));
   ASSERT_TRUE(std::filesystem::exists(golden_path));
@@ -225,13 +226,12 @@ void ExpectLockedFitMatchesGolden(const std::filesystem::path& transform_path) {
   constexpr std::uintmax_t kExpectedSize = 85480;
   constexpr std::uint64_t kExpectedFnv1a64 = 0x79DAB4243AB1C0B8ull;
   // Direct Hermite weights and the SPD solve reorder float arithmetic relative to the reference.
-  constexpr double kPayloadEpsilon = 1e-4;
   EXPECT_EQ(std::filesystem::file_size(golden_path), kExpectedSize);
   EXPECT_EQ(HashFileFnv1a64(golden_path), kExpectedFnv1a64);
   EXPECT_EQ(std::filesystem::file_size(transform_path), kExpectedSize);
 
   if (HashFileFnv1a64(transform_path) != kExpectedFnv1a64) {
-    const auto comparison = NricpFilesNear(transform_path, golden_path, kPayloadEpsilon);
+    const auto comparison = NricpFilesNear(transform_path, golden_path, payload_epsilon);
     EXPECT_TRUE(comparison) << comparison.message();
   }
 }
@@ -312,7 +312,8 @@ TEST(NricpDataSmoke, GpuGeneratedFileMatchesGoldenFitOutput) {
   if (transform_path.empty()) {
     GTEST_SKIP() << "CUDA fit output is not configured for this build.";
   }
-  ExpectLockedFitMatchesGolden(transform_path);
+  // CUDA PCG uses single-precision atomic accumulation and a different Krylov operation order.
+  ExpectLockedFitMatchesGolden(transform_path, 2e-4);
 }
 
 TEST(NricpAdditionalFits, GeneratedFilesMatchGoldens) {

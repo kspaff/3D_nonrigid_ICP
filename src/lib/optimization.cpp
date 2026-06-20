@@ -1,9 +1,11 @@
 #include "optimization.hpp"
 
+#include <limits>
+#include <memory>
 #include <stdexcept>
 
 #ifdef NRICP_ENABLE_CUDA
-#include "src/lib/cuda/cuda_jacobian.hpp"
+#include "src/lib/cuda/cuda_solver.hpp"
 #endif
 
 namespace {
@@ -55,7 +57,6 @@ OptimizationResults SolveWeightedJacobian(Correspondences& correspondences,
     optimization_results.success = false;
     return optimization_results;
   }
-  optimization_results.success = true;
 
   correspondences.pc_mov().x_translation_grid().UpdateAllGridValsFromVector(xhat);
   correspondences.pc_mov().y_translation_grid().UpdateAllGridValsFromVector(xhat);
@@ -63,6 +64,7 @@ OptimizationResults SolveWeightedJacobian(Correspondences& correspondences,
   correspondences.pc_mov().UpdateXt();
   correspondences.ComputeDists();
 
+  optimization_results.success = true;
   optimization_results.num_observations = num_correspondences + num_unknowns;
   optimization_results.num_unknowns = num_unknowns;
 
@@ -141,30 +143,66 @@ OptimizationResults Optimization::Solve(Correspondences& correspondences,
   return SolveWeightedJacobian(correspondences, J, X.num, weights_zero_observations);
 }
 
+#ifndef NRICP_ENABLE_CUDA
 OptimizationResults Optimization::SolveGpu(
     Correspondences& correspondences,
     const std::vector<Scalar>& weights_zero_observations) {
-#ifndef NRICP_ENABLE_CUDA
+  (void)correspondences;
+  (void)weights_zero_observations;
   throw std::runtime_error(
       "GPU execution backend is not available in this build; rerun with --execution_backend cpu.");
+}
 #else
+OptimizationResults Optimization::SolveGpu(
+    Correspondences& correspondences,
+    const std::vector<Scalar>& weights_zero_observations,
+    nricp::cuda::CudaPcgWorkspace* workspace) {
   CorrespondencesPointsWithAttributes X{correspondences.GetCorrespondences()};
   const int num_grid_vals_per_component{
       correspondences.pc_mov().x_translation_grid().num_grid_vals()};
+  const int num_unknowns{num_grid_vals_per_component * 3};
+  VectorX initial_guess{VectorX::Zero(num_unknowns)};
+  correspondences.pc_mov().x_translation_grid().CopyAllGridValsToVector(initial_guess);
+  correspondences.pc_mov().y_translation_grid().CopyAllGridValsToVector(initial_guess);
+  correspondences.pc_mov().z_translation_grid().CopyAllGridValsToVector(initial_guess);
+  const VectorX regularization_diag{
+      BuildZeroObservationWeights(num_unknowns, num_grid_vals_per_component,
+                                  weights_zero_observations)};
 
-  const auto cuda_jacobian = nricp::cuda::BuildWeightedJacobian(
-      FlattenMatrixX3(X.pc_mov_X), CopyVector(X.pc_fix_nx), CopyVector(X.pc_fix_ny),
-      CopyVector(X.pc_fix_nz), CudaShapeFromGrid(correspondences.pc_mov().x_translation_grid()),
-      num_grid_vals_per_component);
-
-  std::vector<Triplet> J_triplets;
-  J_triplets.reserve(cuda_jacobian.triplets.size());
-  for (const auto& triplet : cuda_jacobian.triplets) {
-    J_triplets.emplace_back(triplet.row, triplet.col, static_cast<Scalar>(triplet.value));
+  std::unique_ptr<nricp::cuda::CudaPcgWorkspace> local_workspace;
+  if (workspace == nullptr) {
+    local_workspace = std::make_unique<nricp::cuda::CudaPcgWorkspace>(
+        X.num, num_grid_vals_per_component);
+    workspace = local_workspace.get();
   }
 
-  SparseMatrix J(cuda_jacobian.num_rows, cuda_jacobian.num_cols);
-  J.setFromTriplets(J_triplets.begin(), J_triplets.end());
-  return SolveWeightedJacobian(correspondences, J, X.num, weights_zero_observations);
-#endif
+  const auto solve_result = nricp::cuda::SolveNormalEquationsPcg(
+      *workspace, FlattenMatrixX3(X.pc_mov_X), CopyVector(X.pc_fix_nx), CopyVector(X.pc_fix_ny),
+      CopyVector(X.pc_fix_nz), CopyVector(correspondences.point_to_plane_dists().dists),
+      CopyVector(regularization_diag), CopyVector(initial_guess),
+      CudaShapeFromGrid(correspondences.pc_mov().x_translation_grid()), num_unknowns,
+      std::numeric_limits<Scalar>::epsilon());
+
+  OptimizationResults optimization_results{};
+  optimization_results.num_observations = X.num + num_unknowns;
+  optimization_results.num_unknowns = num_unknowns;
+  if (!solve_result.success) {
+    optimization_results.success = false;
+    return optimization_results;
+  }
+
+  VectorX xhat(num_unknowns);
+  for (int unknown_idx = 0; unknown_idx < num_unknowns; ++unknown_idx) {
+    xhat(unknown_idx) = solve_result.solution[static_cast<size_t>(unknown_idx)];
+  }
+
+  correspondences.pc_mov().x_translation_grid().UpdateAllGridValsFromVector(xhat);
+  correspondences.pc_mov().y_translation_grid().UpdateAllGridValsFromVector(xhat);
+  correspondences.pc_mov().z_translation_grid().UpdateAllGridValsFromVector(xhat);
+  correspondences.pc_mov().UpdateXt();
+  correspondences.ComputeDists();
+
+  optimization_results.success = true;
+  return optimization_results;
 }
+#endif

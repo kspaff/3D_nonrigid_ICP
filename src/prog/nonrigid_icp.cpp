@@ -4,7 +4,11 @@
 #include <cstdio>
 #include <cxxopts.hpp>
 #include <iostream>
+#include <memory>
 
+#ifdef NRICP_ENABLE_CUDA
+#include "src/lib/cuda/cuda_solver.hpp"
+#endif
 #include "src/lib/correspondences.hpp"
 #include "src/lib/io_utils.hpp"
 #include "src/lib/named_column_matrix.hpp"
@@ -140,6 +144,17 @@ int main(int argc, char** argv)
     }
     if (params.profiling) profiler.Stop("A.03 Selection of correspondences");
 
+#ifdef NRICP_ENABLE_CUDA
+    std::unique_ptr<nricp::cuda::CudaPcgWorkspace> gpu_pcg_workspace;
+    if (params.execution_backend == "gpu") {
+      if (params.profiling) profiler.Start("A.03b GPU fitting workspace initialization");
+      gpu_pcg_workspace = std::make_unique<nricp::cuda::CudaPcgWorkspace>(
+          static_cast<int>(correspondences.num()),
+          pc_mov.x_translation_grid().num_grid_vals());
+      if (params.profiling) profiler.Stop("A.03b GPU fitting workspace initialization");
+    }
+#endif
+
     auto debug_mode = (params.debug_dir != "");
 
     if (!params.suppress_logging) {
@@ -176,8 +191,13 @@ int main(int argc, char** argv)
 
       if (params.profiling) profiler.Start("A.05 Optimization");
       if (params.execution_backend == "gpu") {
+#ifdef NRICP_ENABLE_CUDA
+        iteration_results.optimization_results =
+            Optimization::SolveGpu(correspondences, params.weights, gpu_pcg_workspace.get());
+#else
         iteration_results.optimization_results =
             Optimization::SolveGpu(correspondences, params.weights);
+#endif
       } else {
         iteration_results.optimization_results = Optimization::Solve(correspondences, params.weights);
       }
