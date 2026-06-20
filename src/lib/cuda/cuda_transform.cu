@@ -89,9 +89,141 @@ __global__ void ApplyTranslationGridsKernel(const float* points_xyz, float* tran
                             local_x, local_y, local_z);
 }
 
+__global__ void ApplyPackedTranslationGridsKernel(const float* points_xyz, float* transformed_xyz,
+                                                  const int num_points,
+                                                  const float* coefficients_xyz,
+                                                  const int num_grid_vals_per_component,
+                                                  const nricp::cuda::CudaGridShape grid_shape) {
+  const int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (point_idx >= num_points) return;
+
+  const int offset = point_idx * 3;
+  const float x = points_xyz[offset + 0];
+  const float y = points_xyz[offset + 1];
+  const float z = points_xyz[offset + 2];
+
+  const float normalized_x = (x - grid_shape.origin_x) / grid_shape.voxel_size;
+  const float normalized_y = (y - grid_shape.origin_y) / grid_shape.voxel_size;
+  const float normalized_z = (z - grid_shape.origin_z) / grid_shape.voxel_size;
+  const int x_voxel_idx = static_cast<int>(floorf(normalized_x));
+  const int y_voxel_idx = static_cast<int>(floorf(normalized_y));
+  const int z_voxel_idx = static_cast<int>(floorf(normalized_z));
+  const float local_x = normalized_x - x_voxel_idx;
+  const float local_y = normalized_y - y_voxel_idx;
+  const float local_z = normalized_z - z_voxel_idx;
+
+  const float* x_coefficients = coefficients_xyz;
+  const float* y_coefficients = coefficients_xyz + num_grid_vals_per_component;
+  const float* z_coefficients = coefficients_xyz + 2 * num_grid_vals_per_component;
+  transformed_xyz[offset + 0] =
+      x + EvaluateComponent(x_coefficients, grid_shape, x_voxel_idx, y_voxel_idx, z_voxel_idx,
+                            local_x, local_y, local_z);
+  transformed_xyz[offset + 1] =
+      y + EvaluateComponent(y_coefficients, grid_shape, x_voxel_idx, y_voxel_idx, z_voxel_idx,
+                            local_x, local_y, local_z);
+  transformed_xyz[offset + 2] =
+      z + EvaluateComponent(z_coefficients, grid_shape, x_voxel_idx, y_voxel_idx, z_voxel_idx,
+                            local_x, local_y, local_z);
+}
+
 }  // namespace
 
 namespace nricp::cuda {
+
+struct CudaTransformWorkspace::Impl {
+  Impl(const std::vector<float>& points_xyz_in, const int num_grid_vals_per_component_in)
+      : num_points{static_cast<int>(points_xyz_in.size() / 3)},
+        num_grid_vals_per_component{num_grid_vals_per_component_in},
+        points_bytes{points_xyz_in.size() * sizeof(float)},
+        coefficients_bytes{static_cast<size_t>(num_grid_vals_per_component_in) * 3 * sizeof(float)},
+        transformed_xyz(points_xyz_in.size()) {
+    if (points_xyz_in.size() % 3 != 0) {
+      throw std::invalid_argument("points_xyz must contain x/y/z triples");
+    }
+    if (num_grid_vals_per_component <= 0) {
+      throw std::invalid_argument("num_grid_vals_per_component must be positive");
+    }
+    if (num_points == 0) {
+      throw std::invalid_argument("CudaTransformWorkspace requires at least one point");
+    }
+
+    try {
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_points), points_bytes),
+                "cudaMalloc(transform_points)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_transformed), points_bytes),
+                "cudaMalloc(transform_transformed)");
+      CheckCuda(cudaMalloc(reinterpret_cast<void**>(&device_coefficients), coefficients_bytes),
+                "cudaMalloc(transform_coefficients)");
+      CheckCuda(
+          cudaMemcpy(device_points, points_xyz_in.data(), points_bytes, cudaMemcpyHostToDevice),
+          "cudaMemcpy(transform_points)");
+    } catch (...) {
+      Release();
+      throw;
+    }
+  }
+
+  ~Impl() { Release(); }
+
+  void Release() {
+    cudaFree(device_coefficients);
+    cudaFree(device_transformed);
+    cudaFree(device_points);
+    device_coefficients = nullptr;
+    device_transformed = nullptr;
+    device_points = nullptr;
+  }
+
+  int num_points{};
+  int num_grid_vals_per_component{};
+  size_t points_bytes{};
+  size_t coefficients_bytes{};
+  std::vector<float> transformed_xyz;
+  float* device_points{};
+  float* device_transformed{};
+  float* device_coefficients{};
+};
+
+CudaTransformWorkspace::CudaTransformWorkspace(const std::vector<float>& points_xyz,
+                                               const int num_grid_vals_per_component)
+    : impl_{std::make_unique<Impl>(points_xyz, num_grid_vals_per_component)} {}
+
+CudaTransformWorkspace::~CudaTransformWorkspace() = default;
+
+int CudaTransformWorkspace::num_points() const { return impl_->num_points; }
+
+int CudaTransformWorkspace::num_grid_vals_per_component() const {
+  return impl_->num_grid_vals_per_component;
+}
+
+const std::vector<float>& CudaTransformWorkspace::Apply(const std::vector<float>& coefficients_xyz,
+                                                        const CudaGridShape& grid_shape) {
+  Impl& w = *impl_;
+  const size_t expected_coefficients = static_cast<size_t>(w.num_grid_vals_per_component) * 3;
+  if (coefficients_xyz.size() != expected_coefficients) {
+    throw std::invalid_argument("coefficient vector size does not match transform workspace");
+  }
+  const size_t shape_coefficients = static_cast<size_t>(grid_shape.x_num_voxels + 1) *
+                                    static_cast<size_t>(grid_shape.y_num_voxels + 1) *
+                                    static_cast<size_t>(grid_shape.z_num_voxels + 1) * 8;
+  if (shape_coefficients != static_cast<size_t>(w.num_grid_vals_per_component)) {
+    throw std::invalid_argument("grid shape does not match transform workspace");
+  }
+
+  CheckCuda(cudaMemcpy(w.device_coefficients, coefficients_xyz.data(), w.coefficients_bytes,
+                       cudaMemcpyHostToDevice),
+            "cudaMemcpy(transform_coefficients)");
+  constexpr int kThreadsPerBlock = 256;
+  const int num_blocks = (w.num_points + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  ApplyPackedTranslationGridsKernel<<<num_blocks, kThreadsPerBlock>>>(
+      w.device_points, w.device_transformed, w.num_points, w.device_coefficients,
+      w.num_grid_vals_per_component, grid_shape);
+  CheckCuda(cudaGetLastError(), "ApplyPackedTranslationGridsKernel");
+  CheckCuda(cudaMemcpy(w.transformed_xyz.data(), w.device_transformed, w.points_bytes,
+                       cudaMemcpyDeviceToHost),
+            "cudaMemcpy(transform_transformed)");
+  return w.transformed_xyz;
+}
 
 std::vector<float> ApplyTranslationGrids(const std::vector<float>& points_xyz,
                                          const std::vector<float>& x_coefficients,

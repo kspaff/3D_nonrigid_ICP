@@ -6,6 +6,7 @@
 
 #ifdef NRICP_ENABLE_CUDA
 #include "src/lib/cuda/cuda_solver.hpp"
+#include "src/lib/cuda/cuda_transform.hpp"
 #endif
 
 namespace {
@@ -70,7 +71,8 @@ OptimizationResults SolveWeightedJacobian(Correspondences& correspondences, cons
 }
 
 #ifdef NRICP_ENABLE_CUDA
-std::vector<float> FlattenMatrixX3(const MatrixX3& matrix) {
+template <typename MatrixT>
+std::vector<float> FlattenMatrixX3(const MatrixT& matrix) {
   std::vector<float> values;
   values.reserve(static_cast<size_t>(matrix.rows()) * 3);
   for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
@@ -144,9 +146,10 @@ OptimizationResults Optimization::SolveGpu(Correspondences& correspondences,
       "GPU execution backend is not available in this build; rerun with --execution_backend cpu.");
 }
 #else
-OptimizationResults Optimization::SolveGpu(Correspondences& correspondences,
-                                           const std::vector<Scalar>& weights_zero_observations,
-                                           nricp::cuda::CudaPcgWorkspace* workspace) {
+OptimizationResults Optimization::SolveGpu(
+    Correspondences& correspondences, const std::vector<Scalar>& weights_zero_observations,
+    nricp::cuda::CudaPcgWorkspace* workspace,
+    nricp::cuda::CudaTransformWorkspace* transform_workspace) {
   CorrespondencesPointsWithAttributes X{correspondences.GetCorrespondences()};
   const int num_grid_vals_per_component{
       correspondences.pc_mov().x_translation_grid().num_grid_vals()};
@@ -164,13 +167,25 @@ OptimizationResults Optimization::SolveGpu(Correspondences& correspondences,
         std::make_unique<nricp::cuda::CudaPcgWorkspace>(X.num, num_grid_vals_per_component);
     workspace = local_workspace.get();
   }
+  std::unique_ptr<nricp::cuda::CudaTransformWorkspace> local_transform_workspace;
+  if (transform_workspace == nullptr) {
+    local_transform_workspace = std::make_unique<nricp::cuda::CudaTransformWorkspace>(
+        FlattenMatrixX3(correspondences.pc_mov().X()), num_grid_vals_per_component);
+    transform_workspace = local_transform_workspace.get();
+  }
+
+  const auto moving_points_xyz = FlattenMatrixX3(X.pc_mov_X);
+  const auto normal_x = CopyVector(X.pc_fix_nx);
+  const auto normal_y = CopyVector(X.pc_fix_ny);
+  const auto normal_z = CopyVector(X.pc_fix_nz);
+  const auto point_to_plane_dists = CopyVector(correspondences.point_to_plane_dists().dists);
+  const auto regularization = CopyVector(regularization_diag);
+  const auto initial = CopyVector(initial_guess);
 
   const auto solve_result = nricp::cuda::SolveNormalEquationsPcg(
-      *workspace, FlattenMatrixX3(X.pc_mov_X), CopyVector(X.pc_fix_nx), CopyVector(X.pc_fix_ny),
-      CopyVector(X.pc_fix_nz), CopyVector(correspondences.point_to_plane_dists().dists),
-      CopyVector(regularization_diag), CopyVector(initial_guess),
-      CudaShapeFromGrid(correspondences.pc_mov().x_translation_grid()), num_unknowns,
-      std::numeric_limits<Scalar>::epsilon());
+      *workspace, moving_points_xyz, normal_x, normal_y, normal_z, point_to_plane_dists,
+      regularization, initial, CudaShapeFromGrid(correspondences.pc_mov().x_translation_grid()),
+      num_unknowns, std::numeric_limits<Scalar>::epsilon());
 
   OptimizationResults optimization_results{};
   optimization_results.num_observations = X.num + num_unknowns;
@@ -188,8 +203,10 @@ OptimizationResults Optimization::SolveGpu(Correspondences& correspondences,
   correspondences.pc_mov().x_translation_grid().UpdateAllGridValsFromVector(xhat);
   correspondences.pc_mov().y_translation_grid().UpdateAllGridValsFromVector(xhat);
   correspondences.pc_mov().z_translation_grid().UpdateAllGridValsFromVector(xhat);
-  correspondences.pc_mov().UpdateXt();
-  correspondences.ComputeDists();
+  const auto& transformed_xyz = transform_workspace->Apply(
+      solve_result.solution, CudaShapeFromGrid(correspondences.pc_mov().x_translation_grid()));
+  correspondences.pc_mov().SetXtFromFlatXYZ(transformed_xyz);
+  correspondences.ComputeTransformedPointToPlaneReportStats();
 
   optimization_results.success = true;
   return optimization_results;

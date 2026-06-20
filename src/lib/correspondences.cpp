@@ -218,6 +218,48 @@ void Correspondences::ComputeDists() {
   euclidean_dists_t_.std_mad = 1.4826 * MAD(euclidean_dists_t_.dists);
 }
 
+void Correspondences::ComputeTransformedPointToPlaneReportStats() {
+  const int num_correspondences{static_cast<int>(idx_pc_fix_.size())};
+  if (num_correspondences == 0) {
+    throw std::runtime_error("Number of correspondences is zero!");
+  }
+  point_to_plane_dists_t_.dists.resize(num_correspondences);
+
+  const auto& fixed_points = pc_fix_.X();
+  const auto& moving_transformed_points = pc_mov_.Xt();
+  const auto& normal_x = pc_fix_.nx();
+  const auto& normal_y = pc_fix_.ny();
+  const auto& normal_z = pc_fix_.nz();
+
+  double sum = 0.0;
+  for (int i = 0; i < num_correspondences; ++i) {
+    const int fixed_idx = idx_pc_fix_[i];
+    const int moving_idx = idx_pc_mov_[i];
+    const Scalar dx{moving_transformed_points(moving_idx, 0) - fixed_points(fixed_idx, 0)};
+    const Scalar dy{moving_transformed_points(moving_idx, 1) - fixed_points(fixed_idx, 1)};
+    const Scalar dz{moving_transformed_points(moving_idx, 2) - fixed_points(fixed_idx, 2)};
+    const Scalar dist{dx * normal_x(fixed_idx) + dy * normal_y(fixed_idx) +
+                      dz * normal_z(fixed_idx)};
+    point_to_plane_dists_t_.dists(i) = dist;
+    sum += dist;
+  }
+
+  point_to_plane_dists_t_.mean = sum / num_correspondences;
+  if (num_correspondences == 1) {
+    point_to_plane_dists_t_.std = 0.0;
+    return;
+  }
+
+  double squared_error_sum = 0.0;
+  for (int i = 0; i < num_correspondences; ++i) {
+    const double error =
+        static_cast<double>(point_to_plane_dists_t_.dists(i)) - point_to_plane_dists_t_.mean;
+    squared_error_sum += error * error;
+  }
+  point_to_plane_dists_t_.std =
+      std::sqrt(squared_error_sum / (static_cast<double>(num_correspondences) - 1.0));
+}
+
 Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k) {
   if (k <= 0) {
     throw std::invalid_argument("k must be > 0");
@@ -227,8 +269,7 @@ Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k
   }
 
   // Create kd tree
-  typedef nanoflann::KDTreeEigenMatrixAdaptor<MatrixX>
-      kd_tree;
+  typedef nanoflann::KDTreeEigenMatrixAdaptor<MatrixX> kd_tree;
   kd_tree mat_index(static_cast<int>(X.cols()), std::cref(X), LEAF_SIZE);
 
   // Iterate over all query points
@@ -244,8 +285,7 @@ Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k
     // Search for nn of query point
     nanoflann::KNNResultSet<Scalar> resultSet(k);
     resultSet.init(idx_nn.data(), dists_nn.data());
-    mat_index.index_->findNeighbors(resultSet, query_point.data(),
-                                    nanoflann::SearchParameters(10));
+    mat_index.index_->findNeighbors(resultSet, query_point.data(), nanoflann::SearchParameters(10));
 
     // Save indices of nn to matrix
     for (int j = 0; j < k; j++) {

@@ -7,7 +7,8 @@
 #ifdef NRICP_ENABLE_CUDA
 namespace nricp::cuda {
 class CudaPcgWorkspace;
-}
+class CudaTransformWorkspace;
+}  // namespace nricp::cuda
 #endif
 
 struct OptimizationResults {
@@ -24,7 +25,8 @@ class Optimization {
 #ifdef NRICP_ENABLE_CUDA
   static OptimizationResults SolveGpu(Correspondences& correspondences,
                                       const std::vector<Scalar>& weights_zero_observations,
-                                      nricp::cuda::CudaPcgWorkspace* workspace);
+                                      nricp::cuda::CudaPcgWorkspace* workspace,
+                                      nricp::cuda::CudaTransformWorkspace* transform_workspace);
 #else
   static OptimizationResults SolveGpu(Correspondences& correspondences,
                                       const std::vector<Scalar>& weights_zero_observations);

@@ -7,10 +7,8 @@
 namespace {
 
 template <typename WeightRow, typename VoxelRow>
-Scalar EvaluateGridAtPoint(
-    const std::vector<std::vector<std::vector<GridVals>>>& grid_vals,
-    const WeightRow& weights,
-    const VoxelRow& voxel_idx) {
+Scalar EvaluateGridAtPoint(const std::vector<std::vector<std::vector<GridVals>>>& grid_vals,
+                           const WeightRow& weights, const VoxelRow& voxel_idx) {
   Scalar value{0};
 
   for (int corner = 0; corner < 8; ++corner) {
@@ -32,13 +30,12 @@ Scalar EvaluateGridAtPoint(
   return value;
 }
 
-MatrixX3 ApplyTranslationGridsWithReferences(
-    const MatrixX3& X,
-    const TranslationGrid& x_translation_grid,
-    const TranslationGrid& y_translation_grid,
-    const TranslationGrid& z_translation_grid,
-    const MatrixX64& X_weights,
-    const Eigen::MatrixX3i& X_voxel_idx) {
+MatrixX3 ApplyTranslationGridsWithReferences(const MatrixX3& X,
+                                             const TranslationGrid& x_translation_grid,
+                                             const TranslationGrid& y_translation_grid,
+                                             const TranslationGrid& z_translation_grid,
+                                             const MatrixX64& X_weights,
+                                             const Eigen::MatrixX3i& X_voxel_idx) {
   MatrixX3 Xt(X.rows(), 3);
 
   const auto& x_grid_vals = x_translation_grid.grid_vals();
@@ -330,6 +327,21 @@ void PtCloud::UpdateXt() {
                                             z_translation_grid_, X_weights_, X_voxel_idx_);
 }
 
+void PtCloud::SetXtFromFlatXYZ(const std::vector<float>& points_xyz) {
+  if (points_xyz.size() != static_cast<size_t>(X_.rows()) * 3) {
+    throw std::invalid_argument("points_xyz size does not match point cloud size");
+  }
+  if (Xt_.rows() != X_.rows() || Xt_.cols() != 3) {
+    Xt_.resize(X_.rows(), 3);
+  }
+  for (Eigen::Index point_idx = 0; point_idx < X_.rows(); ++point_idx) {
+    const size_t offset = static_cast<size_t>(point_idx) * 3;
+    Xt_(point_idx, 0) = points_xyz[offset + 0];
+    Xt_(point_idx, 1) = points_xyz[offset + 1];
+    Xt_(point_idx, 2) = points_xyz[offset + 2];
+  }
+}
+
 const MatrixX& PtCloud::X() { return X_; }
 const MatrixX& PtCloud::Xt() { return Xt_; }
 const VectorX& PtCloud::nx() { return nx_; }
@@ -347,8 +359,7 @@ Scalar PtCloud::y_max() { return X_.col(1).maxCoeff(); }
 Scalar PtCloud::z_min() { return X_.col(2).minCoeff(); }
 Scalar PtCloud::z_max() { return X_.col(2).maxCoeff(); }
 
-MatrixX3 ApplyTranslationGrids(const MatrixX3& X,
-                               const TranslationGrid& x_translation_grid,
+MatrixX3 ApplyTranslationGrids(const MatrixX3& X, const TranslationGrid& x_translation_grid,
                                const TranslationGrid& y_translation_grid,
                                const TranslationGrid& z_translation_grid) {
   const auto [X_voxel_idx, Xn_voxel] = x_translation_grid.GetGridReference(X);

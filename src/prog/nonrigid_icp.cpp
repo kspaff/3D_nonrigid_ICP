@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cxxopts.hpp>
 #include <iostream>
@@ -8,6 +9,7 @@
 
 #ifdef NRICP_ENABLE_CUDA
 #include "src/lib/cuda/cuda_solver.hpp"
+#include "src/lib/cuda/cuda_transform.hpp"
 #endif
 #include "src/lib/correspondences.hpp"
 #include "src/lib/io_utils.hpp"
@@ -52,6 +54,19 @@ struct Params {
 Params ParseUserInputs(int argc, char** argv);
 
 void ReportIterationResults(const IterationResults& iteration_results);
+
+#ifdef NRICP_ENABLE_CUDA
+std::vector<float> FlattenMatrixX3(const MatrixX& matrix) {
+  std::vector<float> values;
+  values.reserve(static_cast<size_t>(matrix.rows()) * 3);
+  for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
+    values.push_back(matrix(row, 0));
+    values.push_back(matrix(row, 1));
+    values.push_back(matrix(row, 2));
+  }
+  return values;
+}
+#endif
 
 int main(int argc, char** argv) {
   try {
@@ -144,10 +159,15 @@ int main(int argc, char** argv) {
 
 #ifdef NRICP_ENABLE_CUDA
     std::unique_ptr<nricp::cuda::CudaPcgWorkspace> gpu_pcg_workspace;
+    std::unique_ptr<nricp::cuda::CudaTransformWorkspace> gpu_transform_workspace;
     if (params.execution_backend == "gpu") {
       if (params.profiling) profiler.Start("A.03b GPU fitting workspace initialization");
+      const int max_gpu_correspondences = static_cast<int>(std::max<uint64_t>(
+          correspondences.num(), static_cast<uint64_t>(params.num_correspondences)));
       gpu_pcg_workspace = std::make_unique<nricp::cuda::CudaPcgWorkspace>(
-          static_cast<int>(correspondences.num()), pc_mov.x_translation_grid().num_grid_vals());
+          max_gpu_correspondences, pc_mov.x_translation_grid().num_grid_vals());
+      gpu_transform_workspace = std::make_unique<nricp::cuda::CudaTransformWorkspace>(
+          FlattenMatrixX3(pc_mov.X()), pc_mov.x_translation_grid().num_grid_vals());
       if (params.profiling) profiler.Stop("A.03b GPU fitting workspace initialization");
     }
 #endif
@@ -190,7 +210,8 @@ int main(int argc, char** argv) {
       if (params.execution_backend == "gpu") {
 #ifdef NRICP_ENABLE_CUDA
         iteration_results.optimization_results =
-            Optimization::SolveGpu(correspondences, params.weights, gpu_pcg_workspace.get());
+            Optimization::SolveGpu(correspondences, params.weights, gpu_pcg_workspace.get(),
+                                   gpu_transform_workspace.get());
 #else
         iteration_results.optimization_results =
             Optimization::SolveGpu(correspondences, params.weights);

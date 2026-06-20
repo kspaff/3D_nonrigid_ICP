@@ -107,14 +107,37 @@ TEST(CudaTransform, MatchesCpuTricubicTransformEvaluator) {
   const auto points_xyz = FlattenPoints(points);
 
   const nricp::cuda::CudaGridShape grid_shape{0.0f, 0.0f, 0.0f, 1, 1, 1, 1.0f};
+  const auto x_coefficients = FlattenGrid(x_grid);
+  const auto y_coefficients = FlattenGrid(y_grid);
+  const auto z_coefficients = FlattenGrid(z_grid);
   const auto gpu_transformed = nricp::cuda::ApplyTranslationGrids(
-      points_xyz, FlattenGrid(x_grid), FlattenGrid(y_grid), FlattenGrid(z_grid), grid_shape);
+      points_xyz, x_coefficients, y_coefficients, z_coefficients, grid_shape);
 
   ASSERT_EQ(gpu_transformed.size(), points_xyz.size());
   for (Eigen::Index row = 0; row < points.rows(); ++row) {
     for (Eigen::Index col = 0; col < 3; ++col) {
       EXPECT_NEAR(gpu_transformed[static_cast<size_t>(row * 3 + col)], cpu_transformed(row, col),
                   1e-5f);
+    }
+  }
+
+  std::vector<float> packed_coefficients;
+  packed_coefficients.reserve(x_coefficients.size() + y_coefficients.size() +
+                              z_coefficients.size());
+  packed_coefficients.insert(packed_coefficients.end(), x_coefficients.begin(),
+                             x_coefficients.end());
+  packed_coefficients.insert(packed_coefficients.end(), y_coefficients.begin(),
+                             y_coefficients.end());
+  packed_coefficients.insert(packed_coefficients.end(), z_coefficients.begin(),
+                             z_coefficients.end());
+  nricp::cuda::CudaTransformWorkspace workspace{points_xyz,
+                                                static_cast<int>(x_coefficients.size())};
+  const auto& workspace_transformed = workspace.Apply(packed_coefficients, grid_shape);
+  ASSERT_EQ(workspace_transformed.size(), points_xyz.size());
+  for (Eigen::Index row = 0; row < points.rows(); ++row) {
+    for (Eigen::Index col = 0; col < 3; ++col) {
+      EXPECT_NEAR(workspace_transformed[static_cast<size_t>(row * 3 + col)],
+                  cpu_transformed(row, col), 1e-5f);
     }
   }
 }

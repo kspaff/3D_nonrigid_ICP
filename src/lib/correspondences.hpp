@@ -34,6 +34,7 @@ class Correspondences {
   void RejectStdMadCriteria();
   CorrespondencesPointsWithAttributes GetCorrespondences();
   void ComputeDists();
+  void ComputeTransformedPointToPlaneReportStats();
   void SetSelectedPoints(std::vector<int> idx_pc_fix);
   void ExportCorrespondences(const std::string& debug_file_name);
 
@@ -61,8 +62,7 @@ class Correspondences {
   Dists euclidean_dists_t_;
 };
 
-Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query,
-                          const int& k = 1);
+Eigen::MatrixXi KnnSearch(const MatrixX& X, const MatrixX& X_query, const int& k = 1);
 
 template <typename T>
 std::vector<T> KeepSubsetOfVector(const std::vector<T>& old_vector, const std::vector<bool>& keep);

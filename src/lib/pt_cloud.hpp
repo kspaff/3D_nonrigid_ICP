@@ -17,6 +17,7 @@ class PtCloud {
   void ImportTranslationGrids(const std::string& filepath);
   void ExportTranslationGrids(const std::string& filepath);
   void UpdateXt();
+  void SetXtFromFlatXYZ(const std::vector<float>& points_xyz);
   void InitMatricesForUpdateXt();
 
   long NumPts();
@@ -59,8 +60,7 @@ class PtCloud {
   MatrixX64 X_weights_;
 };
 
-MatrixX3 ApplyTranslationGrids(const MatrixX3& X,
-                               const TranslationGrid& x_translation_grid,
+MatrixX3 ApplyTranslationGrids(const MatrixX3& X, const TranslationGrid& x_translation_grid,
                                const TranslationGrid& y_translation_grid,
                                const TranslationGrid& z_translation_grid);
 
