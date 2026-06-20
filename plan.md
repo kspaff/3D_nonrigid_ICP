@@ -1749,6 +1749,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: Matrix-free CUDA PCG fitting and preallocated workspace milestone committed locally as `b65e611a2fdb5fa77e38481951e4071b9907b925` (`Add matrix-free CUDA PCG fitting`).
 - 2026-06-19: Implemented the next GPU fitting optimization because it clearly exceeded the new 5% threshold: each CUDA solve now precomputes weighted tricubic coefficient values and global column indices once into the preallocated `device_weighted_values` and `device_columns` arrays, then reuses that metadata for RHS/preconditioner assembly and every PCG normal-operator application. This removes repeated grid-reference and Hermite-weight recomputation inside each matrix-vector product. Locked profiling after warning cleanup wrote `profile_gpu_matrixfree_pcg_metadata_final_v50_b1_i15_w001_e2_n35000.nricp`, finished in 1.343 s total, and reduced `A.05 Optimization` from 57.4 ms to 39.6 ms mean. Focused GPU verification `ctest -C Release -R "nonrigid-icp.DataSmokeFitGpu|nricp-file-tests.DataSmoke" --output-on-failure` passes 2/2 in 1.74 s.
 - 2026-06-19: Full verification after CUDA weighted-metadata caching: CUDA-enabled `Release|x64` build succeeds with 0 warnings and 0 errors; `ctest -C Release -I 1,16 --output-on-failure` passes 16/16 in 74.43 s.
+- 2026-06-19: CUDA weighted-metadata fitting optimization committed locally as `d55d2837af5c23cacc075eb6e7992e32121170d0` (`Cache CUDA fitting metadata`).
 
 ## Deferred
 
