@@ -1752,6 +1752,7 @@ ef85ee246d09ea429fb831bf66dd2c89cfb6a484c7a73b6da692761dd664469d  timer.hpp
 - 2026-06-19: CUDA weighted-metadata fitting optimization committed locally as `d55d2837af5c23cacc075eb6e7992e32121170d0` (`Cache CUDA fitting metadata`).
 - 2026-06-19: Restored the CUDA PCG relative residual tolerance to the original tight value, `std::numeric_limits<Scalar>::epsilon()`, per user direction. The tolerance-relaxation results are kept only as experiment notes under `Abandoned`; they are not part of the implementation.
 - 2026-06-19: Final tight-tolerance correctness/codestyle pass: ran Visual Studio LLVM `clang-format` over the touched CUDA, registration CLI, optimization, and `.nricp` test files; CUDA-enabled `Release|x64` build succeeds; `ctest -C Release -I 1,16 --output-on-failure` passes 16/16 in 76.90 s; `git diff --check` reports no whitespace errors. A standalone locked GPU profile wrote `final_gpu_tight_tol_v50_b1_i15_w001_e2_n35000.nricp`, finished in 1.371 s, and reported `A.05 Optimization` mean 40.3 ms with the original tight tolerance. The standalone GPU file is not byte-identical to the test GPU artifact because the CUDA fitting path uses atomics/order-of-operations that can vary by run, but an epsilon-aware payload scan found max absolute drift `7.89761543273926e-05` with zero values over the existing GPU `.nricp` epsilon of `2e-4`.
+- 2026-06-19: Final tight-tolerance correctness/codestyle checkpoint committed locally as `8b892c2b0ab4daaabf7c87857730ff8f3af886b8` (`Restore tight CUDA tolerance and format touched code`).
 
 ## Deferred
 
